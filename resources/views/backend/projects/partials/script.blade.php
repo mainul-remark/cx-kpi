@@ -1,0 +1,201 @@
+<script>
+    $(function () {
+        const projectUrl = @json(route('projects.index'));
+        const can = {
+            show: @json((bool) allowed('projects.show')),
+            edit: @json((bool) allowed('projects.edit')),
+            destroy: @json((bool) allowed('projects.destroy'))
+        };
+
+        const $modal = $('#projectModal');
+        const $form = $('#projectForm');
+        const $submitBtn = $('#projectSubmitBtn');
+        const modal = bootstrap.Modal.getOrCreateInstance($modal[0]);
+        const modes = {
+            create: { title: 'Create Project', button: 'Save' },
+            edit: { title: 'Edit Project', button: 'Update' },
+            show: { title: 'Project Details', button: '' }
+        };
+
+        const projectTable = $('#projectDataTable').DataTable({
+            processing: true,
+            serverSide: true,
+            searchDelay: 400,
+            order: [],
+            ajax: {
+                url: projectUrl
+            },
+            columns: [
+                { data: 'DT_RowIndex', name: 'DT_RowIndex', orderable: false, searchable: false, width: '60px' },
+                { data: 'name', name: 'name' },
+                {
+                    data: 'notes', name: 'notes',
+                    render: function (data, type) {
+                        if (type !== 'display' || !data) return data || '';
+                        return '<span class="d-inline-block text-truncate align-bottom" style="max-width: 320px">' + data + '</span>';
+                    }
+                },
+                { data: 'slug', name: 'slug' },
+                {
+                    data: 'active', name: 'active', searchable: false,
+                    render: function (data) {
+                        return data
+                            ? '<span class="badge text-bg-success">Active</span>'
+                            : '<span class="badge text-bg-danger">Inactive</span>';
+                    }
+                },
+                {
+                    data: 'id', name: 'id', orderable: false, searchable: false, width: '140px',
+                    render: function (id) {
+                        let buttons = '';
+                        if (can.show) {
+                            buttons += '<a href="javascript:void(0)" class="btn btn-outline-primary btn-sm view-project" data-id="' + id + '" title="View Project"><i class="fa fa-eye"></i></a>';
+                        }
+                        if (can.edit) {
+                            buttons += '<a href="javascript:void(0)" class="btn btn-outline-primary btn-sm ms-2 edit-project" data-id="' + id + '" title="Edit Project"><i class="fa fa-pencil-alt"></i></a>';
+                        }
+                        if (can.destroy) {
+                            buttons += '<button type="button" class="btn btn-outline-danger btn-sm ms-2 delete-project" data-id="' + id + '" title="Delete Project"><i class="fa fa-trash-alt"></i></button>';
+                        }
+                        return buttons;
+                    }
+                }
+            ]
+        });
+
+        function clearErrors() {
+            $form.find('.is-invalid').removeClass('is-invalid');
+            $form.find('[data-error-for]').text('');
+        }
+
+        function showErrors(errors) {
+            $.each(errors, function (field, messages) {
+                $form.find('[name="' + field + '"]').addClass('is-invalid');
+                $form.find('[data-error-for="' + field + '"]').text(messages[0]);
+            });
+            $form.find('.is-invalid').first().trigger('focus');
+        }
+
+        function errorMessage(xhr, fallback) {
+            if (xhr.status === 403) return 'You do not have permission to perform this action.';
+            if (xhr.status === 404) return 'Project not found.';
+            return (xhr.responseJSON && xhr.responseJSON.message) || fallback;
+        }
+
+        function setMode(mode, id) {
+            const readOnly = mode === 'show';
+
+            $form[0].reset();
+            clearErrors();
+            $form.data('mode', mode).data('id', id || null);
+            $('#projectModalLabel').text(modes[mode].title);
+            $submitBtn.text(modes[mode].button).toggleClass('d-none', readOnly).prop('disabled', false);
+            $form.find('[name]').prop('disabled', readOnly);
+            $('#projectSlugGroup').toggleClass('d-none', !readOnly);
+        }
+
+        function fillForm(project) {
+            $('#project_name').val(project.name);
+            $('#project_slug').val(project.slug);
+            $('#project_notes').val(project.notes || '');
+            $('#project_active').prop('checked', !!project.active);
+        }
+
+        function openWithProject(mode, id) {
+            $.ajax({
+                url: projectUrl + '/' + id + (mode === 'edit' ? '/edit' : ''),
+                method: 'GET',
+                dataType: 'json'
+            }).done(function (project) {
+                setMode(mode, id);
+                fillForm(project);
+                modal.show();
+            }).fail(function (xhr) {
+                toastr.error(errorMessage(xhr, 'Failed to load project details.'));
+            });
+        }
+
+        $('#createProjectBtn').on('click', function () {
+            setMode('create');
+            modal.show();
+        });
+
+        $(document).on('click', '.view-project', function () {
+            openWithProject('show', $(this).data('id'));
+        });
+
+        $(document).on('click', '.edit-project', function () {
+            openWithProject('edit', $(this).data('id'));
+        });
+
+        $modal.on('shown.bs.modal', function () {
+            if ($form.data('mode') !== 'show') {
+                $('#project_name').trigger('focus');
+            }
+        });
+
+        $form.on('input change', '.is-invalid', function () {
+            $(this).removeClass('is-invalid');
+        });
+
+        $form.on('submit', function (e) {
+            e.preventDefault();
+
+            const mode = $form.data('mode');
+            if (mode === 'show') return;
+
+            const isEdit = mode === 'edit';
+            const buttonText = $submitBtn.text();
+
+            clearErrors();
+            $submitBtn.prop('disabled', true).text('Saving...');
+
+            $.ajax({
+                url: isEdit ? projectUrl + '/' + $form.data('id') : projectUrl,
+                method: isEdit ? 'PUT' : 'POST',
+                data: $form.serialize(),
+                dataType: 'json'
+            }).done(function (response) {
+                modal.hide();
+                toastr.success(response.message || 'Project saved successfully.');
+                // keep the current page on edit, jump to the first page to show a new project
+                projectTable.ajax.reload(null, !isEdit);
+            }).fail(function (xhr) {
+                if (xhr.status === 422 && xhr.responseJSON && xhr.responseJSON.errors) {
+                    showErrors(xhr.responseJSON.errors);
+                    return;
+                }
+                toastr.error(errorMessage(xhr, 'Failed to save project.'));
+            }).always(function () {
+                $submitBtn.prop('disabled', false).text(buttonText);
+            });
+        });
+
+        $(document).on('click', '.delete-project', function () {
+            const id = $(this).data('id');
+
+            Swal.fire({
+                title: "Are you sure?",
+                text: "You won't be able to revert this!",
+                icon: "warning",
+                showCancelButton: true,
+                confirmButtonColor: "#3085d6",
+                cancelButtonColor: "#d33",
+                confirmButtonText: "Yes, delete it!"
+            }).then(function (result) {
+                if (!result.isConfirmed) return;
+
+                $.ajax({
+                    url: projectUrl + '/' + id,
+                    method: 'DELETE',
+                    dataType: 'json'
+                }).done(function (response) {
+                    toastr.success(response.message || 'Project deleted successfully.');
+                    projectTable.ajax.reload(null, false);
+                }).fail(function (xhr) {
+                    toastr.error(errorMessage(xhr, 'Failed to delete project.'));
+                });
+            });
+        });
+    });
+</script>

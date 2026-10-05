@@ -1,0 +1,418 @@
+================================================================================
+         SECURITY & CODE QUALITY AUDIT REPORT
+         Asset Remark — Laravel Application
+         Audited: March 4, 2026
+================================================================================
+
+EXECUTIVE SUMMARY
+-----------------
+31 issues found across 4 severity levels. The most critical problem is a
+complete authorization bypass — all policies are non-functional and a dangerous
+unauthenticated route exists that can wipe your database.
+
+  Severity   | Count
+  -----------|------
+  CRITICAL   |   4
+  HIGH       |   9
+  MEDIUM     |   9
+  LOW        |   5
+  INFO       |   4
+  -----------|------
+  TOTAL      |  31
+
+
+================================================================================
+  CRITICAL SEVERITY
+================================================================================
+
+[C-1] ALL AUTHORIZATION POLICIES RETURN true — AUTHORIZATION COMPLETELY DISABLED
+  Files: All app/Policies/*.php
+
+  Every single policy method returns true unconditionally, including viewAny,
+  create, update, and delete. This means any authenticated user can read,
+  create, update, or delete any resource regardless of their role. The policies
+  exist but provide zero protection.
+
+  Example (AssetPolicy.php — ALL policies look like this):
+    public function delete(User $user, Asset $model): bool { return true; }
+
+  FIX: Replace return true with actual role-based checks using your hasRole()
+  helper or Spatie permissions.
+
+--------------------------------------------------------------------------------
+
+[C-2] ALL FORM REQUESTS RETURN authorize(): true — REQUEST AUTHORIZATION DISABLED
+  Files: All app/Http/Requests/**/*.php
+
+  The authorize() method in every form request returns true, disabling the
+  second layer of authorization that should prevent unauthorized users from
+  even submitting forms.
+
+  FIX: Implement real authorization logic inside authorize() methods.
+
+--------------------------------------------------------------------------------
+
+[C-3] UNAUTHENTICATED /store-sync ROUTE THAT TRUNCATES THE DATABASE
+  File: routes/web.php (lines ~55–113)
+
+  Route::get('/store-sync', function () {
+      DB::statement('SET FOREIGN_KEY_CHECKS=0;');  // Disables DB integrity
+      // Truncates tables and re-inserts all data
+  });
+
+  Critical problems:
+    - This route has NO auth middleware — anyone on the internet can call it
+    - It DISABLES foreign key checks, allowing data corruption
+    - It TRUNCATES and rewrites production data from a raw closure in routes
+    - No rate limiting, no authorization, no logging
+
+  FIX: Move this to a protected Artisan command, add auth middleware, and
+  remove SET FOREIGN_KEY_CHECKS=0.
+
+--------------------------------------------------------------------------------
+
+[C-4] RAW EXCEPTION MESSAGES RETURNED TO USERS
+  Files: StoreController.php, BrandController.php, CategoryController.php,
+         RoleController.php, UsersController.php
+
+  catch (\Exception $exception) {
+      return response()->json(['message' => $exception->getMessage()], 500);
+  }
+
+  This exposes internal file paths, SQL queries, table names, and application
+  structure to attackers.
+
+  FIX: Log the real error (Log::error($exception)), return a generic user
+  message instead.
+
+
+================================================================================
+  HIGH SEVERITY
+================================================================================
+
+[H-1] FILE DELETION USING @unlink() WITH USER-CONTROLLED PATH
+  File: app/Http/Controllers/Admin/UsersController.php (lines ~136–138)
+
+  if ($user->profile_image && file_exists(public_path($user->profile_image))) {
+      @unlink(public_path($user->profile_image));  // Dangerous!
+  }
+
+  Problems:
+    - @ suppresses all errors — failures are completely silent
+    - No check that the path stays within the expected uploads directory
+      (path traversal risk)
+    - Race condition between file_exists() and unlink()
+
+  FIX: Validate the path is within storage/app/public/uploads/, use
+  Laravel's Storage::delete() instead.
+
+--------------------------------------------------------------------------------
+
+[H-2] ROLE/USER DELETION WITHOUT RESOURCE-LEVEL AUTHORIZATION
+  Files: RoleController.php (lines ~107–122), UsersController.php (lines ~114–144)
+
+  Controllers check hasRole(['super-admin']) (role of the actor) but never
+  verify the target resource is safe to delete. Any super-admin can delete any
+  role, including system-critical roles, without restriction.
+
+  FIX: Protect system roles from deletion (e.g., role_id = 1). Use policies
+  via $this->authorize('delete', $role).
+
+--------------------------------------------------------------------------------
+
+[H-3] NO CONTROLLERS USE $this->authorize() OR GATE CHECKS
+  Files: All backend controllers
+
+  None of the store(), update(), destroy() methods call $this->authorize(),
+  meaning the policy layer is never invoked even if policies were fixed.
+
+  FIX: Add $this->authorize('action', $model) at the top of each controller
+  method.
+
+--------------------------------------------------------------------------------
+
+[H-4] FILE UPLOAD — MIME TYPE SPOOFING RISK
+  File: app/Http/Requests/Backend/KV/KeyVisualRequest.php (line 33)
+
+  'mimes:jpg,jpeg,png,webp,mp4,mov,avi,mkv,webm,pdf'
+
+  This validates the extension claimed by the browser, not the actual file
+  content (magic bytes). An attacker can upload a PHP file disguised as an image.
+
+  FIX: Also validate max size, store files outside the public directory, and
+  serve through a controlled download route. Consider validating magic bytes.
+
+--------------------------------------------------------------------------------
+
+[H-5] N+1 QUERIES ON LARGE DATASETS — NO PAGINATION
+  File: app/Http/Controllers/Backend/Asset/AssetController.php (line 18)
+
+  Asset::with(['assetType:id,name', 'store:id,title,code'])->latest()->get()
+
+  ->get() fetches ALL records. With thousands of assets, this will exhaust
+  memory and timeout.
+
+  FIX: Use ->paginate(25) on all index endpoints.
+
+--------------------------------------------------------------------------------
+
+[H-6] ROLE MODEL USES $guarded = [] — FULL MASS ASSIGNMENT EXPOSURE
+  File: app/Models/Role.php (line 14)
+
+  The Role model has no fillable protection. A crafted POST request could set
+  arbitrary role fields including IDs or permission levels.
+
+  FIX: Replace with explicit $fillable = ['name', 'slug', ...].
+
+--------------------------------------------------------------------------------
+
+[H-7] SEARCH WITH NO RATE LIMITING — RESOURCE EXHAUSTION RISK
+  File: app/Models/Scopes/Searchable.php (lines 27–36)
+
+  The scopeSearch trait applies LIKE "%{$search}%" across multiple columns with
+  no rate limiting. An attacker can send thousands of complex search strings to
+  exhaust the database.
+
+  FIX: Add throttle middleware to search endpoints.
+
+--------------------------------------------------------------------------------
+
+[H-8] hasRole() IS A CUSTOM GLOBAL HELPER — NOT A SECURITY BOUNDARY
+  Used throughout controllers and middlewares.
+
+  If this function reads from a session or cache that can be manipulated, the
+  entire authorization model can be bypassed. It is not integrated with
+  Laravel's Gate, so middleware checks and policy checks are independent and
+  inconsistent.
+
+  FIX: Use Laravel Gate::check() or $user->can() tied to proper policies.
+
+--------------------------------------------------------------------------------
+
+[H-9] ECHO IN CONTROLLER — INFORMATION LEAKAGE
+  File: app/Http/Controllers/Admin/RoleController.php (lines ~19–22)
+
+  catch (Exception $ex) {
+      echo 'Caught exception: ', $ex->getMessage(), "\n";
+  }
+
+  Raw echo in a controller method sends unescaped exception data directly into
+  the HTML response.
+
+  FIX: Use Log::error() and redirect with a generic error message.
+
+
+================================================================================
+  MEDIUM SEVERITY
+================================================================================
+
+[M-1] UserRole MODEL HAS $timestamps = false — NO AUDIT TRAIL
+  File: app/Models/UserRole.php (line 9)
+
+  Role assignments to users have no created_at/updated_at, making it impossible
+  to audit when permissions were granted or revoked.
+
+  FIX: Enable timestamps or add a custom audit log entry on role assignment.
+
+--------------------------------------------------------------------------------
+
+[M-2] PASSWORD REGEX ONLY ALLOWS 3 SPECIAL CHARACTERS (@#$)
+  File: app/Http/Controllers/Admin/UsersController.php (lines ~186–192)
+
+  'regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@#$]).+$/'
+
+  This is overly restrictive (rejects !, %, ^, etc.) and does not check against
+  common passwords or breached password lists.
+
+  FIX: Use Laravel's Password::min(8)->mixedCase()->numbers()->symbols()
+  rule builder which is more comprehensive and maintainable.
+
+--------------------------------------------------------------------------------
+
+[M-3] SOFT DELETE RECORDS NOT CONSISTENTLY FILTERED
+  Files: Models using SoftDeletes — Asset, Brand, Category, KeyVisual,
+         AssignAssetToStore
+
+  If any public-facing query forgets to use the default soft delete scope,
+  soft-deleted records could be exposed in responses.
+
+  FIX: Audit all queries on soft-deletable models to confirm ->whereNull('deleted_at')
+  or the SoftDeletes trait scope is always active.
+
+--------------------------------------------------------------------------------
+
+[M-4] MISSING DATABASE INDEXES ON FOREIGN KEYS & SEARCH COLUMNS
+  Files: Recent migration files
+
+  Foreign key columns (asset_type_id, store_id, division_id, district_id,
+  thana_id) and columns used in LIKE searches (title, code, name) lack indexes,
+  causing full table scans on every query.
+
+  FIX: Add ->index() to all foreign key columns and frequently searched columns
+  in migrations.
+
+--------------------------------------------------------------------------------
+
+[M-5] DISTRICT/THANA CASCADE ENDPOINTS EXPOSE DB STRUCTURE
+  File: routes/web.php (lines ~50–51)
+
+  Route::get('get-districts/{division}', ...)
+  Route::get('get-thanas/{district}', ...)
+
+  These don't validate that provided IDs exist before querying, which can
+  reveal whether IDs exist through timing differences (enumeration attack).
+
+  FIX: Validate IDs exist using findOrFail() or add existence validation.
+
+--------------------------------------------------------------------------------
+
+[M-6] NO TRANSACTION SAFETY FOR FILE + DB OPERATIONS
+  When a file upload succeeds but the DB insert fails (or vice versa), orphaned
+  files accumulate in storage with no cleanup.
+
+  FIX: Wrap file operations and DB writes together. On DB failure, delete the
+  uploaded file within the catch block.
+
+--------------------------------------------------------------------------------
+
+[M-7] uniqid() USED FOR FILE NAMING — NOT CRYPTOGRAPHICALLY SECURE
+  File: app/Http/Controllers/Backend/SiteSettingsController.php (line ~219)
+
+  uniqid() is predictable (based on microtime). Filenames can be guessed.
+
+  FIX: Use Str::random(40) or bin2hex(random_bytes(20)) instead.
+
+--------------------------------------------------------------------------------
+
+[M-8] INCONSISTENT ERROR RESPONSE STRUCTURE
+  Some methods return ['success' => false, 'message' => '...'], others return
+  ['status' => 'error'], and others redirect. This makes frontend error
+  handling unreliable.
+
+  FIX: Define a standard JSON response structure and use it consistently.
+
+--------------------------------------------------------------------------------
+
+[M-9] NO LOGGING ON SECURITY-SENSITIVE OPERATIONS
+  User creation, deletion, role changes, and login events are not logged.
+  This makes forensic investigation impossible.
+
+  FIX: Use Log::channel('security') or an audit package (e.g., owen-it/laravel-auditing)
+  on User, Role, and UserRole models.
+
+
+================================================================================
+  LOW SEVERITY
+================================================================================
+
+[L-1] DEAD / COMMENTED-OUT CODE
+  Files: BrandController.php (lines ~40–42), AssetTypeController.php (line 53),
+         routes/web.php (lines ~105–113), User.php (lines ~215–251)
+
+  Commented-out code adds noise, can contain old vulnerabilities, and creates
+  maintenance confusion.
+
+  FIX: Remove all commented-out code blocks.
+
+--------------------------------------------------------------------------------
+
+[L-2] alpha VALIDATION REJECTS VALID BRAND CODES
+  File: app/Http/Requests/Backend/KV/BrandRequest.php (lines ~25–26)
+
+  'code' => 'required|string|min:2|max:3|alpha|...'
+
+  The alpha rule rejects codes like 3M, 7UP, H&M. Use alpha_num or a
+  custom regex instead.
+
+--------------------------------------------------------------------------------
+
+[L-3] MAGIC NUMBERS WITHOUT CONSTANTS
+  Files: app/Models/Asset.php (lines ~99–104),
+         app/Models/AssignAssetToStore.php (line 38)
+
+  Values like $baseCode = 50000000 and $data['asset_charge'] = 0 have no
+  explanation.
+
+  FIX: Extract to named constants with explanatory names.
+
+--------------------------------------------------------------------------------
+
+[L-4] INCONSISTENT EAGER LOADING
+  Some index methods use selective with(['relation:id,name']), others load
+  all relationships. This causes unpredictable performance.
+
+  FIX: Create a consistent pattern — always use select() to restrict columns
+  and only load relationships required for each view.
+
+--------------------------------------------------------------------------------
+
+[L-5] NO RATE LIMITING ON WRITE ENDPOINTS
+  File upload, user creation, and login endpoints have no rate limiting
+  via throttle middleware.
+
+  FIX: Add ->middleware('throttle:60,1') to sensitive route groups.
+
+
+================================================================================
+  INFO / RECOMMENDATIONS
+================================================================================
+
+[I-1] MISSING API DOCUMENTATION
+  No documentation for JSON response formats, expected request bodies, or
+  error codes for any endpoint.
+
+[I-2] MISSING PAGINATION ON ALL INDEX ENDPOINTS
+  All list views use ->get() with no upper bound. Add ->paginate() globally.
+
+[I-3] NO AUTOMATED TESTS
+  No unit or feature tests detected. Critical paths (authorization, file
+  upload, user management) should have test coverage.
+
+[I-4] CONSIDER A DEDICATED AUDIT LOG PACKAGE
+  Recommend: owen-it/laravel-auditing or spatie/laravel-activitylog to
+  automatically track all model changes with user attribution.
+
+
+================================================================================
+  REMEDIATION PRIORITY ROADMAP
+================================================================================
+
+PHASE 1 — This Week (Critical Path):
+  1. Lock down or remove /store-sync (publicly accessible DB wipe route)
+  2. Implement real logic in all Policy methods (replace return true)
+  3. Call $this->authorize() in every controller method
+  4. Replace $exception->getMessage() with Log::error() + generic message
+  5. Fix @unlink() — use Storage::delete() with path validation
+
+PHASE 2 — Next Sprint:
+  6. Add ->paginate() to all ->get() index calls
+  7. Replace $guarded = [] on Role model with explicit $fillable
+  8. Add rate limiting (throttle middleware) to sensitive routes
+  9. Fix file upload validation (magic bytes, store outside public directory)
+  10. Add database indexes on foreign keys and search columns
+
+PHASE 3 — Two Weeks:
+  11. Standardize error response structure across all controllers
+  12. Add security logging on user/role management operations
+  13. Enable timestamps on UserRole model
+  14. Fix password validation to use Laravel Password rule builder
+  15. Remove all dead/commented-out code
+
+PHASE 4 — One Month:
+  16. Add automated test coverage for auth, file upload, and CRUD operations
+  17. Integrate an audit log package (spatie/laravel-activitylog)
+  18. Add API documentation
+  19. Implement CSRF and input sanitization review
+
+
+================================================================================
+  DISCLAIMER
+================================================================================
+This report was generated through static code analysis and manual review of
+source files. It reflects findings as of the audit date. New vulnerabilities
+may emerge as the codebase evolves. This report should be treated as
+confidential and not shared outside the development team.
+
+================================================================================
+  END OF REPORT
+================================================================================

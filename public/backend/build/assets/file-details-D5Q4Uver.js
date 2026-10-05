@@ -1,0 +1,1 @@
+(function(){new Swiper(".pagination",{pagination:{el:".swiper-pagination",clickable:!0},navigation:{nextEl:".swiper-button-next",prevEl:".swiper-button-prev"},autoplay:{delay:1500,disableOnInteraction:!1},slidesPerView:1,loop:!0,spaceBetween:20,breakpoints:{420:{slidesPerView:2},500:{slidesPerView:2},700:{slidesPerView:3},992:{slidesPerView:3},1400:{slidesPerView:4}}})})();

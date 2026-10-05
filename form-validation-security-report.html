@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Form Validation and Security Audit Report</title>
+    <style>
+        :root {
+            --bg: #f4efe6;
+            --panel: #fffdf8;
+            --ink: #1f2937;
+            --muted: #6b7280;
+            --line: #ded6c8;
+            --accent: #0f766e;
+            --accent-soft: #d9f3ef;
+            --danger: #b42318;
+            --danger-soft: #fde7e4;
+            --warn: #b54708;
+            --warn-soft: #fff0dc;
+            --ok: #027a48;
+            --ok-soft: #dcfae6;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: Georgia, "Times New Roman", serif;
+            background: linear-gradient(180deg, #efe8dc 0%, var(--bg) 100%);
+            color: var(--ink);
+            line-height: 1.55;
+        }
+
+        .wrap {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 40px 20px 64px;
+        }
+
+        .hero {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 20px;
+            padding: 32px;
+            box-shadow: 0 18px 45px rgba(0, 0, 0, 0.06);
+        }
+
+        .eyebrow {
+            display: inline-block;
+            margin-bottom: 10px;
+            padding: 6px 10px;
+            border-radius: 999px;
+            background: var(--accent-soft);
+            color: var(--accent);
+            font-size: 12px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            font-weight: 700;
+        }
+
+        h1, h2, h3 {
+            margin: 0 0 12px;
+            line-height: 1.15;
+        }
+
+        h1 {
+            font-size: 42px;
+        }
+
+        h2 {
+            font-size: 28px;
+            margin-top: 36px;
+        }
+
+        h3 {
+            font-size: 20px;
+            margin-top: 26px;
+        }
+
+        p {
+            margin: 0 0 12px;
+        }
+
+        .muted {
+            color: var(--muted);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 16px;
+            margin-top: 24px;
+        }
+
+        .card {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            padding: 18px;
+        }
+
+        .priority {
+            margin-top: 24px;
+            border-left: 6px solid var(--line);
+            padding: 18px 18px 18px 20px;
+            background: var(--panel);
+            border-radius: 14px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
+        }
+
+        .priority.critical {
+            border-left-color: var(--danger);
+        }
+
+        .priority.high {
+            border-left-color: var(--warn);
+        }
+
+        .priority.medium {
+            border-left-color: var(--accent);
+        }
+
+        .tag {
+            display: inline-block;
+            padding: 4px 9px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+
+        .tag.critical {
+            background: var(--danger-soft);
+            color: var(--danger);
+        }
+
+        .tag.high {
+            background: var(--warn-soft);
+            color: var(--warn);
+        }
+
+        .tag.medium {
+            background: var(--accent-soft);
+            color: var(--accent);
+        }
+
+        ul, ol {
+            margin: 10px 0 0 20px;
+            padding: 0;
+        }
+
+        li {
+            margin: 8px 0;
+        }
+
+        code {
+            background: #f3eee5;
+            border: 1px solid #e4dbcd;
+            border-radius: 6px;
+            padding: 1px 6px;
+            font-family: Consolas, "Courier New", monospace;
+            font-size: 0.95em;
+        }
+
+        .section {
+            margin-top: 28px;
+        }
+
+        .table-like {
+            display: grid;
+            gap: 12px;
+            margin-top: 14px;
+        }
+
+        .row {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            padding: 16px;
+        }
+
+        .ok {
+            color: var(--ok);
+            font-weight: 700;
+        }
+
+        .warn {
+            color: var(--warn);
+            font-weight: 700;
+        }
+
+        .danger {
+            color: var(--danger);
+            font-weight: 700;
+        }
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <section class="hero">
+        <div class="eyebrow">Audit Export</div>
+        <h1>Form Validation and Security Audit Report</h1>
+        <p>This report is based on a code audit of <code>routes/web.php</code>, related Blade forms, controller validation, FormRequest classes, and model-level validation helpers.</p>
+        <p class="muted">Scope note: this report summarizes code-path review results. It is not a live browser execution report.</p>
+
+        <div class="grid">
+            <div class="card">
+                <h3>Highest Risk</h3>
+                <p>Public debug and maintenance routes exposed without authentication.</p>
+            </div>
+            <div class="card">
+                <h3>Highest Business Risk</h3>
+                <p>Billing approval and adjustment logic lacks strict financial upper bounds.</p>
+            </div>
+            <div class="card">
+                <h3>Highest Functional Risk</h3>
+                <p>Asset update flow contains an early return that breaks intended update behavior.</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="section">
+        <h2>Prioritized Remediation Plan</h2>
+
+        <article class="priority critical">
+            <div class="tag critical">Priority 1</div>
+            <h3>Disable Public Debug and Maintenance Routes</h3>
+            <p><span class="danger">Issue:</span> <code>/phpinfo</code>, <code>/optimize-clear</code>, and <code>/has-kv</code> are publicly accessible.</p>
+            <p><strong>Best solution:</strong> remove these routes from production entirely. If temporary access is required, protect them with environment checks, authentication, strict admin authorization, and ideally signed internal-only access.</p>
+            <p><strong>Why first:</strong> this is the clearest direct exposure and should be treated as an emergency hardening task.</p>
+        </article>
+
+        <article class="priority critical">
+            <div class="tag critical">Priority 2</div>
+            <h3>Fix Broken Asset Update Flow</h3>
+            <p><span class="danger">Issue:</span> the asset update method returns early before the intended transaction completes.</p>
+            <p><strong>Best solution:</strong> remove the accidental early return and let the full update flow execute, including assignment log sync, planogram history handling, and response formatting.</p>
+            <p><strong>Why second:</strong> this is an active functional defect with data consistency impact.</p>
+        </article>
+
+        <article class="priority high">
+            <div class="tag high">Priority 3</div>
+            <h3>Enforce Workflow Status Validation Centrally</h3>
+            <p><span class="warn">Issue:</span> VM issue status can be mutated through a route parameter without enum enforcement.</p>
+            <p><strong>Best solution:</strong> validate all status transitions through a dedicated FormRequest or workflow service, with a fixed allowed enum and transition map.</p>
+            <p><strong>Why:</strong> route-driven state mutation bypasses the stronger validation used elsewhere.</p>
+        </article>
+
+        <article class="priority high">
+            <div class="tag high">Priority 4</div>
+            <h3>Harden Billing Amount Rules</h3>
+            <p><span class="warn">Issue:</span> billing dispute approvals and bill adjustments allow unsafe numeric values.</p>
+            <p><strong>Best solution:</strong></p>
+            <ul>
+                <li>Enforce <code>approved_amount &lt;= original_amount</code>.</li>
+                <li>Enforce <code>approved_amount &lt;= requested_amount</code> if that matches business policy.</li>
+                <li>Enforce <code>final_amount &gt;= 0</code>.</li>
+                <li>Move these validations into dedicated FormRequest classes for billing actions.</li>
+            </ul>
+            <p><strong>Why:</strong> this is a revenue, audit, and reconciliation risk.</p>
+        </article>
+
+        <article class="priority high">
+            <div class="tag high">Priority 5</div>
+            <h3>Validate VM Fix Endpoints Properly</h3>
+            <p><span class="warn">Issue:</span> VM fix assignment, proof upload, and status change endpoints use weak or missing request validation.</p>
+            <p><strong>Best solution:</strong> add explicit request validation for assignee existence, allowed status transitions, proof file type/count/size, and permission enforcement at the controller or policy layer.</p>
+            <p><strong>Why:</strong> these endpoints are currently too trusting of request payloads.</p>
+        </article>
+
+        <article class="priority medium">
+            <div class="tag medium">Priority 6</div>
+            <h3>Strengthen KV Slot Validation</h3>
+            <p><span class="warn">Issue:</span> <code>slot_number</code> is required but not validated as integer or bounded by configured slot limits.</p>
+            <p><strong>Best solution:</strong> validate <code>slot_number</code> as a positive integer and compare it against the asset type’s maximum slot count in one place.</p>
+            <p><strong>Why:</strong> current logic checks occupancy, but not full correctness.</p>
+        </article>
+
+        <article class="priority medium">
+            <div class="tag medium">Priority 7</div>
+            <h3>Refactor Legacy User and Role Validation</h3>
+            <p><span class="warn">Issue:</span> some user and role validation still lives in model helper methods and only checks integer shape for foreign keys.</p>
+            <p><strong>Best solution:</strong> move all mutation validation into FormRequest classes and enforce <code>exists</code> for <code>role_id.*</code> and <code>resource.*</code>.</p>
+            <p><strong>Why:</strong> it reduces integrity risk and makes authorization and validation more consistent.</p>
+        </article>
+
+        <article class="priority medium">
+            <div class="tag medium">Priority 8</div>
+            <h3>Improve Frontend and Backend Rule Consistency</h3>
+            <p><span class="warn">Issue:</span> several UI constraints are only partially mirrored in backend validation, and some forms rely heavily on JavaScript checks.</p>
+            <p><strong>Best solution:</strong> keep backend validation as the source of truth, then mirror the same rules in the UI only for usability.</p>
+            <p><strong>Why:</strong> lower security impact, but useful for supportability and predictable UX.</p>
+        </article>
+    </section>
+
+    <section class="section">
+        <h2>Best Overall Solution Strategy</h2>
+        <div class="table-like">
+            <div class="row">
+                <h3>1. Centralize Validation</h3>
+                <p>Use dedicated FormRequest classes for every mutating endpoint instead of mixing validation between controllers, models, and ad hoc request checks.</p>
+            </div>
+            <div class="row">
+                <h3>2. Centralize Workflow Rules</h3>
+                <p>Move status transitions into service classes or a workflow layer so route parameters and UI payloads cannot arbitrarily set state.</p>
+            </div>
+            <div class="row">
+                <h3>3. Remove Dangerous Production Utilities</h3>
+                <p>Do not leave debug or maintenance routes exposed. The best protection is removal, not delayed restriction.</p>
+            </div>
+            <div class="row">
+                <h3>4. Add Focused Feature Tests</h3>
+                <p>Create route tests for required fields, bad enum values, invalid foreign keys, duplicate conflicts, unsafe financial values, file uploads, and unauthorized access.</p>
+            </div>
+            <div class="row">
+                <h3>5. Keep Backend as Source of Truth</h3>
+                <p>Frontend checks should improve usability only. Security and business rules must always be enforced server-side.</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="section">
+        <h2>Recommended Execution Order</h2>
+        <ol>
+            <li>Disable public debug and maintenance routes.</li>
+            <li>Fix the asset update early return.</li>
+            <li>Patch billing amount validation and bounds.</li>
+            <li>Patch VM issue status transition validation.</li>
+            <li>Patch VM fix endpoint validation and authorization.</li>
+            <li>Patch KV slot number validation.</li>
+            <li>Refactor legacy user and role validation into FormRequests.</li>
+            <li>Add regression tests around all critical mutating routes.</li>
+        </ol>
+    </section>
+
+    <section class="section">
+        <h2>Audit Notes</h2>
+        <p><span class="ok">Confirmed strong areas:</span> asset type validation, brand validation, key visual validation, key visual file validation, store validation, asset-to-brand assignment validation, and user store assignment validation are generally in better shape than the legacy endpoints.</p>
+        <p><span class="warn">Main pattern behind weaker areas:</span> direct controller mutations, route-parameter state changes, and older validation code left in model helpers.</p>
+    </section>
+</div>
+</body>
+</html>
