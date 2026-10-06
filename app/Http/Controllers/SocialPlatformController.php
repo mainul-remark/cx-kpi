@@ -99,10 +99,10 @@ class SocialPlatformController extends Controller
      */
     public function destroy(SocialPlatform $socialPlatform)
     {
-        if ($socialPlatform->dailyReportReplies()->exists()) {
+        if ($socialPlatform->dailyReportReplies()->exists() || $socialPlatform->dailyTargetReplies()->exists()) {
             return response()->json([
                 'success' => false,
-                'message' => 'This social platform has daily report data. Deactivate it instead of deleting it.',
+                'message' => 'This social platform has daily report or target data. Deactivate it instead of deleting it.',
             ], 409);
         }
 

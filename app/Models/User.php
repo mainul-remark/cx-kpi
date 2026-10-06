@@ -133,9 +133,6 @@ class User extends Authenticatable
             'role_id.*'     => 'integer',
             'employee_id'   => 'required|string',
             'usages_sector' => 'required|in:field,corporate',
-            'assign_all_stores' => 'nullable|boolean',
-            'store_ids'     => [Rule::requiredIf(fn () => $request->input('usages_sector') === 'field' && !$request->boolean('assign_all_stores')), 'array'],
-            'store_ids.*'   => ['integer', Rule::exists('stores', 'id')->where(fn ($q) => $q->whereNull('deleted_at')->where('status', 1))],
             'profile_image' => 'nullable|image|mimes:jpeg,jpg,webp,png|max:1048',
 
         ], [
@@ -153,8 +150,6 @@ class User extends Authenticatable
 //                'mobile_no.unique'      => 'Mobile number already exists.',
             'role_id.required'      => 'Select at least one role.',
             'usages_sector.required'=> 'Select at least one Sector among Corporate and Field.',
-            'store_ids.required'    => 'Please assign at least one store for a field user, or check "Assign all stores".',
-            'store_ids.*.exists'    => 'One or more selected stores are invalid or inactive.',
             'profile_image.image'   => 'Please upload valid image file.',
             'profile_image.mimes'   => 'Image must be jpeg, jpg, png or webp format.',
             'profile_image.max'     => 'Image size must be less than 1MB.',

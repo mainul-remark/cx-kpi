@@ -271,17 +271,6 @@
                         const accessRole = @json(hasRole(['super-admin']));
 
                         let html  = '';
-                        const userName = $('<div>').text(row.name || '').html();
-                        const userEmail = $('<div>').text(row.email || '').html();
-                        const userEmployeeId = $('<div>').text(row.employee_id || '').html();
-                        let usages_sector = $('<div>').text(row.usages_sector || '').html();
-
-                        if (usages_sector != 'corporate')
-                        {
-                            html += '<a href="javascript:void(0)" class="btn btn-sm btn-outline-secondary me-1 open-store-assign-modal" data-usages-sector="'+usages_sector+'" data-user-id="'+row.id+'" data-user-name="'+userName+'" data-user-email="'+userEmail+'" data-user-employee-id="'+userEmployeeId+'" title="Assign Store">';
-                            html += '<i class="ri-store-2-line"></i>';
-                            html += '</a>';
-                        }
 
                         html += '<a href="' + viewUrl + '" class="btn btn-sm btn-outline-secondary me-1" title="View">';
                         html += '<i class="ri-eye-line"></i>';

@@ -27,6 +27,11 @@ class SocialPlatform extends Model
         return $this->hasMany(DailyReportPlatformReply::class);
     }
 
+    public function dailyTargetReplies(): HasMany
+    {
+        return $this->hasMany(DailyTargetPlatformReply::class);
+    }
+
     /**
      * Create a new social platform, or update the given one, from validated data.
      */

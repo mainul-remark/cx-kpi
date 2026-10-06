@@ -114,23 +114,23 @@
                     </li>
                 @endallowed
 
-                @allowed('daily-reports.create')
-                    <li class="slide">
-                        <a href="{{ route('daily-reports.create') }}" class="side-menu__item">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="side-menu__icon" viewBox="0 0 24 24"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zm-8.5-2.5l6-6-1.41-1.41-4.59 4.58-2.09-2.08L7 13l3.5 3.5z"/></svg>
-                            <span class="side-menu__label">Daily Report</span>
-                        </a>
-                    </li>
-                @endallowed
+{{--                @allowed('daily-reports.create')--}}
+{{--                    <li class="slide">--}}
+{{--                        <a href="{{ route('daily-reports.create') }}" class="side-menu__item">--}}
+{{--                            <svg xmlns="http://www.w3.org/2000/svg" class="side-menu__icon" viewBox="0 0 24 24"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zm-8.5-2.5l6-6-1.41-1.41-4.59 4.58-2.09-2.08L7 13l3.5 3.5z"/></svg>--}}
+{{--                            <span class="side-menu__label">Daily Report</span>--}}
+{{--                        </a>--}}
+{{--                    </li>--}}
+{{--                @endallowed--}}
 
-                @allowed('daily-reports.index')
-                    <li class="slide">
-                        <a href="{{ route('daily-reports.index') }}" class="side-menu__item">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="side-menu__icon" viewBox="0 0 24 24"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.954 8.954 0 0 0 13 21a9 9 0 0 0 0-18zm-1 5v5l4.25 2.52.77-1.28-3.52-2.09V8H12z"/></svg>
-                            <span class="side-menu__label">Report History</span>
-                        </a>
-                    </li>
-                @endallowed
+{{--                @allowed('daily-reports.index')--}}
+{{--                    <li class="slide">--}}
+{{--                        <a href="{{ route('daily-reports.index') }}" class="side-menu__item">--}}
+{{--                            <svg xmlns="http://www.w3.org/2000/svg" class="side-menu__icon" viewBox="0 0 24 24"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.954 8.954 0 0 0 13 21a9 9 0 0 0 0-18zm-1 5v5l4.25 2.52.77-1.28-3.52-2.09V8H12z"/></svg>--}}
+{{--                            <span class="side-menu__label">Report History</span>--}}
+{{--                        </a>--}}
+{{--                    </li>--}}
+{{--                @endallowed--}}
 
                 @allowed('daily-reports.team')
                     <li class="slide">
@@ -140,48 +140,69 @@
                         </a>
                     </li>
                 @endallowed
-                <!-- sample menu with nested sub menu -->
+
+                @allowed('attendance.index')
+                    <li class="slide">
+                        <a href="{{ route('attendance.index') }}" class="side-menu__item">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="side-menu__icon" viewBox="0 0 24 24"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zm-8.5-2.5l6-6-1.41-1.41-4.59 4.58-2.09-2.08L7 13l3.5 3.5z"/></svg>
+                            <span class="side-menu__label">Attendance</span>
+                        </a>
+                    </li>
+                @endallowed
+
+{{--                @allowed('daily-targets.index')--}}
+{{--                    <li class="slide">--}}
+{{--                        <a href="{{ route('daily-targets.index') }}" class="side-menu__item">--}}
+{{--                            <svg xmlns="http://www.w3.org/2000/svg" class="side-menu__icon" viewBox="0 0 24 24"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm0-6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>--}}
+{{--                            <span class="side-menu__label">Daily Targets</span>--}}
+{{--                        </a>--}}
+{{--                    </li>--}}
+{{--                @endallowed--}}
+
+{{--                @allowed('holidays.index')--}}
+{{--                    <li class="slide">--}}
+{{--                        <a href="{{ route('holidays.index') }}" class="side-menu__item">--}}
+{{--                            <svg xmlns="http://www.w3.org/2000/svg" class="side-menu__icon" viewBox="0 0 24 24"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM9.41 17L12 14.41 14.59 17 16 15.59 13.41 13 16 10.41 14.59 9 12 11.59 9.41 9 8 10.41 10.59 13 8 15.59 9.41 17z"/></svg>--}}
+{{--                            <span class="side-menu__label">Holidays</span>--}}
+{{--                        </a>--}}
+{{--                    </li>--}}
+{{--                @endallowed--}}
+                <!-- Reports menu with nested sub menu -->
                 <li class="slide has-sub">
                     <a href="javascript:void(0);" class="side-menu__item">
-{{--                        <svg xmlns="http://www.w3.org/2000/svg" class="side-menu__icon" viewBox="0 0 24 24"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M5.64 9l-.6 3h13.92l-.6-3H5.64zm12.19-2L19 12.5V19c0 .55-.45 1-1 1h-1c-.55 0-1-.45-1-1v-1H8v1c0 .55-.45 1-1 1H6c-.55 0-1-.45-1-1v-6.5L6.17 7H4V5h16v2h-2.17zM8 14c0-.55-.45-1-1-1s-1 .45-1 1 .45 1 1 1 1-.45 1-1zm10 0c0-.55-.45-1-1-1s-1 .45-1 1 .45 1 1 1 1-.45 1-1z" opacity=".3"/><path d="M4 5h16v2h-2.17l1.17 5.5V19c0 .55-.45 1-1 1h-1c-.55 0-1-.45-1-1v-1H8v1c0 .55-.45 1-1 1H6c-.55 0-1-.45-1-1v-6.5L6.17 7H4V5zm1.64 4l-.6 3h13.92l-.6-3H5.64zM7 15c.55 0 1-.45 1-1s-.45-1-1-1-1 .45-1 1 .45 1 1 1zm10 0c.55 0 1-.45 1-1s-.45-1-1-1-1 .45-1 1 .45 1 1 1z"/></svg>--}}
-                        <svg  xmlns="http://www.w3.org/2000/svg" width="24" height="24"
-                              fill="currentColor" viewBox="0 0 24 24" >
-                            <!--Boxicons v3.0.8 https://boxicons.com | License  https://docs.boxicons.com/free-->
-                            <path d="M21.93 7.66c-.02-.05-.04-.11-.07-.16a1 1 0 0 0-.06-.08c-.03-.04-.06-.09-.1-.12-.03-.03-.06-.04-.09-.07-.04-.03-.07-.06-.11-.09h-.01l-9-5.01a.99.99 0 0 0-.97 0l-9.01 5H2.5c-.04.02-.07.06-.11.09a.6.6 0 0 0-.09.07c-.04.04-.07.08-.1.12-.02.03-.05.05-.06.08-.03.05-.05.1-.07.16-.01.03-.03.05-.03.08-.02.08-.04.17-.04.26v8c0 .36.2.7.51.87l9 5 .15.06c.03.01.06.03.09.03a1.1 1.1 0 0 0 .5 0c.03 0 .06-.02.09-.03.05-.02.1-.03.15-.06l9-5c.32-.18.51-.51.51-.87v-8c0-.09-.01-.18-.04-.26 0-.03-.02-.05-.03-.08ZM12 4.15l6.94 3.86-2.44 1.36-6.94-3.86zm-4.5 2.5 6.94 3.86L12 11.87 5.06 8.01zM4 9.71l7 3.89v5.71l-7-3.89zm16 5.71-7 3.89V13.6l2.5-1.39v3.21l2-1.11V11.1L20 9.71z"></path>
-                        </svg>
-                        <span class="side-menu__label">Assets</span>
+                        <svg xmlns="http://www.w3.org/2000/svg" class="side-menu__icon" viewBox="0 0 24 24"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zm-8.5-2.5l6-6-1.41-1.41-4.59 4.58-2.09-2.08L7 13l3.5 3.5z"/></svg>
+                        <span class="side-menu__label">Daily Reports</span>
                         <i class="fe fe-chevron-right side-menu__angle"></i>
                     </a>
                     <ul class="slide-menu child1">
                         <li class="slide side-menu__label1 ms-1">
-                            <a href="javascript:void(0);">Assets</a>
+                            <a href="javascript:void(0);">Daily Reports</a>
                         </li>
-                        @allowed('asset-types.index')
-                            <li class="slide">
-                                <a href="{{ route('asset-types.index') }}" class="side-menu__item">Asset Categories</a>
-                            </li>
-                        @endallowed
-
-                        @allowed('assets.index')
-                            <li class="slide">
-                                <a href="{{ route('assets.index') }}" class="side-menu__item">Assets</a>
-                            </li>
-                        @endallowed
-
-                        @if(auth()->id() == 1)
-                            {{--                        @allowed('assets.assign-asset-to-brand')--}}
-                            {{--                            <li class="slide">--}}
-                            {{--                                <a href="{{ route('assets.assign-asset-to-brand') }}" class="side-menu__item">Assign Asset to Brand</a>--}}
-                            {{--                            </li>--}}
-                            {{--                        @endallowed--}}
-                        @endif
-
-
-                        @allowed('assets.planogram-histories')
-                            <li class="slide">
-                                <a href="{{ route('assets.planogram-histories') }}" class="side-menu__item">Planogram Histories</a>
-                            </li>
-                        @endallowed
+                        <li class="slide">
+                            <a href="{{ route('daily-reports.create') }}" class="side-menu__item">Daily Report</a>
+                        </li>
+                        <li class="slide">
+                            <a href="{{ route('daily-reports.index') }}" class="side-menu__item">Report History</a>
+                        </li>
+                    </ul>
+                </li>
+                <!-- Targets menu with nested sub menu -->
+                <li class="slide has-sub">
+                    <a href="javascript:void(0);" class="side-menu__item">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="side-menu__icon" viewBox="0 0 24 24"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm0-6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
+                        <span class="side-menu__label">Targets</span>
+                        <i class="fe fe-chevron-right side-menu__angle"></i>
+                    </a>
+                    <ul class="slide-menu child1">
+                        <li class="slide side-menu__label1 ms-1">
+                            <a href="javascript:void(0);">Targets</a>
+                        </li>
+                        <li class="slide">
+                            <a href="{{ route('daily-targets.index') }}" class="side-menu__item">Daily Targets</a>
+                        </li>
+                        <li class="slide">
+                            <a href="{{ route('holidays.index') }}" class="side-menu__item">Holidays</a>
+                        </li>
                     </ul>
                 </li>
 

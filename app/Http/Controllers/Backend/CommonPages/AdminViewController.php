@@ -14,25 +14,55 @@ use App\Models\UserStoreAssignment;
 use App\Models\VisualMerchandising;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use App\Services\Dashboard\ReportDashboardService;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Mainul\CustomHelperFunctions\Helpers\CustomHelper;
 use Spatie\Activitylog\Models\Activity;
 use Uzzal\Acl\Models\Resource;
 
 class AdminViewController extends Controller
 {
-    public function dashboard()
+    /**
+     * The report dashboard: the page itself, and its figures as JSON when asked for over ajax.
+     *
+     * A corporate user sees everyone's data and the targets, a field user only their own reports.
+     */
+    public function dashboard(Request $request, ReportDashboardService $dashboard)
     {
-        $user = auth()->user();
+        $user = $request->user();
+        $canViewAll = $user->usages_sector === 'corporate';
 
-        if (!$user->isAdmin()) {
-            return view('backend.common-pages.dashboard.dashboard-common');
+        if (!$request->ajax()) {
+            return view('backend.common-pages.dashboard.dashboard', [
+                'canViewAll' => $canViewAll,
+                'users' => $canViewAll
+                    ? User::query()->where('usages_sector', 'field')->orderBy('name')->get(['id', 'name'])
+                    : collect(),
+            ]);
         }
 
-
-        return view('backend.common-pages.dashboard.dashboard', [
-
+        $filters = $request->validate([
+            'preset' => ['nullable', Rule::in(ReportDashboardService::PRESETS)],
+            'from' => ['required_if:preset,custom', 'nullable', 'date_format:Y-m-d'],
+            'to' => ['required_if:preset,custom', 'nullable', 'date_format:Y-m-d', 'after_or_equal:from'],
+            'user_id' => ['nullable', 'integer'],
         ]);
+
+        [$from, $to] = $dashboard->range($filters['preset'] ?? 'month', $filters['from'] ?? null, $filters['to'] ?? null);
+
+        if (Carbon::parse($from)->diffInDays(Carbon::parse($to)) >= ReportDashboardService::MAX_RANGE_DAYS) {
+            throw ValidationException::withMessages([
+                'to' => 'The date range cannot be longer than '.ReportDashboardService::MAX_RANGE_DAYS.' days.',
+            ]);
+        }
+
+        // a field user is always held to their own data, whatever user the request names
+        $userId = $canViewAll ? (isset($filters['user_id']) ? (int) $filters['user_id'] : null) : (int) $user->id;
+
+        return response()->json($dashboard->build($from, $to, $userId, $canViewAll, $canViewAll));
     }
 
     public function viewPermissionList()

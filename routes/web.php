@@ -8,6 +8,9 @@ use App\Http\Controllers\Admin\UsersController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\SocialPlatformController;
 use App\Http\Controllers\DailyReportController;
+use App\Http\Controllers\DailyTargetController;
+use App\Http\Controllers\HolidayController;
+use App\Http\Controllers\AttendanceController;
 
 Route::get('/', function () {
     if (auth()->check())
@@ -41,6 +44,11 @@ Route::middleware([
         'social-platforms'          => SocialPlatformController::class,
         'daily-reports'             => DailyReportController::class,
     ]);
+    Route::resource('daily-targets', DailyTargetController::class)->only(['index', 'create', 'store', 'edit', 'destroy']);
+    Route::post('holidays/import', [HolidayController::class, 'import'])->name('holidays.import');
+    Route::get('holidays/sample', [HolidayController::class, 'sample'])->name('holidays.sample');
+    Route::resource('holidays', HolidayController::class)->except(['create', 'show']);
+    Route::get('attendance', [AttendanceController::class, 'index'])->name('attendance.index');
     Route::post('site-settings/theme', [SiteSettingsController::class, 'saveTheme'])->name('site-settings.theme');
 });
 

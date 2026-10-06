@@ -27,6 +27,11 @@ class Project extends Model
         return $this->hasMany(DailyReportProjectCall::class);
     }
 
+    public function dailyTargetCalls(): HasMany
+    {
+        return $this->hasMany(DailyTargetProjectCall::class);
+    }
+
     /**
      * Create a new project, or update the given one, from validated data.
      */

@@ -99,10 +99,10 @@ class ProjectController extends Controller
      */
     public function destroy(Project $project)
     {
-        if ($project->dailyReportCalls()->exists()) {
+        if ($project->dailyReportCalls()->exists() || $project->dailyTargetCalls()->exists()) {
             return response()->json([
                 'success' => false,
-                'message' => 'This project has daily report data. Deactivate it instead of deleting it.',
+                'message' => 'This project has daily report or target data. Deactivate it instead of deleting it.',
             ], 409);
         }
 

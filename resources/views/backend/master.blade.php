@@ -102,11 +102,7 @@
     <div class="main-content app-content card pb-5" style="border-radius: 0px!important; box-shadow: none;">
 
 
-        <div class="alert alert-primary text-center mb-0" role="alert">
-            <strong>Prototype Notice:</strong>
-            This application is currently open for testing and review. Some features may not work as expected
-            Please report any issues to the developer or contact us via WhatsApp at 01646688970.
-        </div>
+
 
         @yield('body')
     </div>

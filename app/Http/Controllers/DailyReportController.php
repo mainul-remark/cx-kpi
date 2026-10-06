@@ -34,7 +34,7 @@ class DailyReportController extends Controller
         if (!$request->ajax()) {
             return view('backend.daily-reports.index', [
                 'scope' => 'team',
-                'users' => User::query()->orderBy('name')->get(['id', 'name']),
+                'users' => User::query()->where('usages_sector', 'field')->orderBy('name')->get(['id', 'name']),
             ]);
         }
 
