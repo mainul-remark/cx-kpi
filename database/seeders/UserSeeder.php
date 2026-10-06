@@ -15,8 +15,8 @@ class UserSeeder extends Seeder
     {
         User::/*factory()->withPersonalTeam()->*/create([
             'name' => 'Developer',
-            'email' => 'developer@remarkhb.com',
-            'password' => bcrypt('developer'),
+            'email' => 'muhammad.ali@remarkhb.com',
+            'password' => bcrypt('muhammad.ali'),
             'employee_id' => 'M9380',
             'usages_sector' => 'corporate',
         ]);

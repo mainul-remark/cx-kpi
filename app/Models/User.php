@@ -44,6 +44,7 @@ class User extends Authenticatable
         'profile_image',
         'usages_sector',
         'employee_id',
+        'is_active',
     ];
 
 //    protected $guarded = [];
@@ -79,6 +80,7 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'is_active' => 'boolean',
         ];
     }
 
@@ -92,6 +94,7 @@ class User extends Authenticatable
                 'profile_image',
                 'usages_sector',
                 'employee_id',
+                'is_active',
                 'password_changed_at',
                 'email_verified_at',
             ])
@@ -133,6 +136,7 @@ class User extends Authenticatable
             'role_id.*'     => 'integer',
             'employee_id'   => 'required|string',
             'usages_sector' => 'required|in:field,corporate',
+            'is_active'     => 'required|boolean',
             'profile_image' => 'nullable|image|mimes:jpeg,jpg,webp,png|max:1048',
 
         ], [
@@ -150,6 +154,8 @@ class User extends Authenticatable
 //                'mobile_no.unique'      => 'Mobile number already exists.',
             'role_id.required'      => 'Select at least one role.',
             'usages_sector.required'=> 'Select at least one Sector among Corporate and Field.',
+            'is_active.required'    => 'Status is required.',
+            'is_active.boolean'     => 'Status must be active or inactive.',
             'profile_image.image'   => 'Please upload valid image file.',
             'profile_image.mimes'   => 'Image must be jpeg, jpg, png or webp format.',
             'profile_image.max'     => 'Image size must be less than 1MB.',
@@ -175,9 +181,8 @@ class User extends Authenticatable
             'role_id.*'     => 'integer',
             'employee_id'   => 'required|string',
             'usages_sector' => 'required|in:field,corporate',
+            'is_active'     => 'required|boolean',
             'assign_all_stores' => 'nullable|boolean',
-            'store_ids'     => [Rule::requiredIf(fn () => $request->input('usages_sector') === 'field' && !$request->boolean('assign_all_stores')), 'array'],
-            'store_ids.*'   => ['integer', Rule::exists('stores', 'id')->where(fn ($q) => $q->whereNull('deleted_at')->where('status', 1))],
             'profile_image' => 'nullable|image|mimes:jpeg,jpg,webp,png|max:1048',
 
         ], [
@@ -195,8 +200,8 @@ class User extends Authenticatable
 //            'mobile_no.unique'      => 'Mobile number already exists.',
             'role_id.required'      => 'Select at least one role.',
             'employee_id.required'  => 'Employee ID is required.',
-            'store_ids.required'    => 'Please assign at least one store for a field user, or check "Assign all stores".',
-            'store_ids.*.exists'    => 'One or more selected stores are invalid or inactive.',
+            'is_active.required'    => 'Status is required.',
+            'is_active.boolean'     => 'Status must be active or inactive.',
             'profile_image.image'   => 'Please upload valid image file.',
             'profile_image.mimes'   => 'Image must be jpeg, jpg, png or webp format.',
             'profile_image.max'     => 'Image size must be less than 1MB.',
@@ -229,6 +234,7 @@ class User extends Authenticatable
 //            'account_type'          => $request->account_type,
             'usages_sector'         => $request->usages_sector ?? 'field',
             'employee_id'           => $request->employee_id   ?? '',
+            'is_active'             => $request->boolean('is_active'),
             'password_changed_at'   => now(),
             'profile_image'         => CustomHelper::fileUpload($request->file('profile_image'), 'profile-image','profile-image', 200,160),
         ];
@@ -253,9 +259,9 @@ class User extends Authenticatable
             'email'         => $request->email ?? null,
             'usages_sector' => $request->usages_sector ?? 'field',
             'employee_id'   => $request->employee_id ?? '',
+            'is_active'     => $request->boolean('is_active'),
 //            'mobile_no'     => $request->mobile_no,
 //            'account_type'  => $request->account_type,
-//            'is_active'     => $request->is_active,
         ];
 
         if ($request->filled('password')) {

@@ -248,17 +248,15 @@
                       return String(data).slice(0, 10);
                   }
               },
-              // {
-              //     data: 'is_active',
-              //     title: 'Status',
-              //     render: function (data, type, row) {
-              //         return data === 1
-              //             ? '<span class="badge bg-outline-success px-2">Active</span>'
-              //             : data === 0
-              //                 ? '<span class="badge bg-outline-danger px-2">Inactive</span>'
-              //                 : '';
-              //     }
-              // },
+              {
+                  data: 'is_active',
+                  title: 'Status',
+                  render: function (data) {
+                      return data
+                          ? '<span class="badge bg-outline-success px-2">Active</span>'
+                          : '<span class="badge bg-outline-danger px-2">Inactive</span>';
+                  }
+              },
                 {
                     data: null,
                     title: 'Action',

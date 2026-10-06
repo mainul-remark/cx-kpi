@@ -166,15 +166,20 @@
                                 </div>
                             </div>
 
-{{--                            <div class="row mb-3">--}}
-{{--                                <label class="col-lg-2" for="status">Status <span class="text-danger">*</span> </label><br/>--}}
-{{--                                <div class="col-lg-10">--}}
-{{--                                    <select name="is_active" class="form-control @error('is_active') is-invalid @enderror select_status">--}}
-{{--                                        <option value="1" {{old('is_active',$user->is_active) == 1 ? 'selected': ''}}>Active</option>--}}
-{{--                                        <option value="0" {{old('is_active',$user->is_active) == 0 ? 'selected': ''}}>Inactive</option>--}}
-{{--                                    </select>--}}
-{{--                                </div>--}}
-{{--                            </div>--}}
+                            <div class="row mb-3">
+                                <label class="col-lg-2" for="is_active">Status <span class="text-danger">*</span></label>
+                                <div class="col-lg-10">
+                                    <select required id="is_active" name="is_active" class="form-select @error('is_active') is-invalid @enderror select_status">
+                                        <option value="1" {{ (string) old('is_active', (int) $user->is_active) === '1' ? 'selected' : '' }}>Active</option>
+                                        <option value="0" {{ (string) old('is_active', (int) $user->is_active) === '0' ? 'selected' : '' }}>Inactive</option>
+                                    </select>
+                                    @error('is_active')
+                                    <span class="invalid-feedback" role="alert">
+                                        <strong>{{ $message }}</strong>
+                                    </span>
+                                    @enderror
+                                </div>
+                            </div>
 
                             <div class="row mt-4">
                                 <div class="col-md-10 offset-lg-2">

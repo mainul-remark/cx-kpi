@@ -33,7 +33,7 @@ class UsersController extends Controller
             $users = User::with([
                     'roles:role_id,name',
                 ])
-                ->select('id','name','email','employee_id','profile_image','created_at')
+                ->select('id','name','email','employee_id','profile_image','created_at','is_active')
                 ->when($request->input('role_id'), function ($query, $roleId) {
                     $query->whereHas('roles', fn ($q) => $q->where('roles.role_id', $roleId));
                 })

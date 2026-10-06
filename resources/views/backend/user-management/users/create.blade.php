@@ -144,6 +144,21 @@
                                 </div>
                             </div>
 
+                            <div class="row mb-3">
+                                <label class="col-lg-2" for="is_active">Status <span class="text-danger">*</span></label>
+                                <div class="col-lg-10">
+                                    <select required id="is_active" name="is_active" class="form-select @error('is_active') is-invalid @enderror select_status">
+                                        <option value="1" {{ old('is_active', '1') === '1' ? 'selected' : '' }}>Active</option>
+                                        <option value="0" {{ old('is_active', '1') === '0' ? 'selected' : '' }}>Inactive</option>
+                                    </select>
+                                    @error('is_active')
+                                    <span class="invalid-feedback" role="alert">
+                                        <strong>{{ $message }}</strong>
+                                    </span>
+                                    @enderror
+                                </div>
+                            </div>
+
 
                             <div class="row mb-3">
                                 <label class="col-lg-2 col-form-label" for="profile_image">Profile Image</label>

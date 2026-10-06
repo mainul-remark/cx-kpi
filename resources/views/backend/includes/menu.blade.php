@@ -168,6 +168,7 @@
 {{--                    </li>--}}
 {{--                @endallowed--}}
                 <!-- Reports menu with nested sub menu -->
+                @if(allowed('daily-reports.create') || allowed('daily-reports.index'))
                 <li class="slide has-sub">
                     <a href="javascript:void(0);" class="side-menu__item">
                         <svg xmlns="http://www.w3.org/2000/svg" class="side-menu__icon" viewBox="0 0 24 24"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zm-8.5-2.5l6-6-1.41-1.41-4.59 4.58-2.09-2.08L7 13l3.5 3.5z"/></svg>
@@ -178,33 +179,44 @@
                         <li class="slide side-menu__label1 ms-1">
                             <a href="javascript:void(0);">Daily Reports</a>
                         </li>
-                        <li class="slide">
-                            <a href="{{ route('daily-reports.create') }}" class="side-menu__item">Daily Report</a>
-                        </li>
-                        <li class="slide">
-                            <a href="{{ route('daily-reports.index') }}" class="side-menu__item">Report History</a>
-                        </li>
+                        @allowed('daily-reports.create')
+                            <li class="slide">
+                                <a href="{{ route('daily-reports.create') }}" class="side-menu__item">Daily Report</a>
+                            </li>
+                        @endallowed
+                        @allowed('daily-reports.index')
+                            <li class="slide">
+                                <a href="{{ route('daily-reports.index') }}" class="side-menu__item">Report History</a>
+                            </li>
+                        @endallowed
                     </ul>
                 </li>
+                @endif
                 <!-- Targets menu with nested sub menu -->
+                @if(allowed('daily-targets.index') || allowed('holidays.index'))
                 <li class="slide has-sub">
                     <a href="javascript:void(0);" class="side-menu__item">
                         <svg xmlns="http://www.w3.org/2000/svg" class="side-menu__icon" viewBox="0 0 24 24"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm0-6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
-                        <span class="side-menu__label">Targets</span>
+                        <span class="side-menu__label">Daily Targets</span>
                         <i class="fe fe-chevron-right side-menu__angle"></i>
                     </a>
                     <ul class="slide-menu child1">
                         <li class="slide side-menu__label1 ms-1">
-                            <a href="javascript:void(0);">Targets</a>
+                            <a href="javascript:void(0);">Daily Targets</a>
                         </li>
-                        <li class="slide">
-                            <a href="{{ route('daily-targets.index') }}" class="side-menu__item">Daily Targets</a>
-                        </li>
-                        <li class="slide">
-                            <a href="{{ route('holidays.index') }}" class="side-menu__item">Holidays</a>
-                        </li>
+                        @allowed('daily-targets.index')
+                            <li class="slide">
+                                <a href="{{ route('daily-targets.index') }}" class="side-menu__item">Daily Targets</a>
+                            </li>
+                        @endallowed
+                        @allowed('holidays.index')
+                            <li class="slide">
+                                <a href="{{ route('holidays.index') }}" class="side-menu__item">Holidays</a>
+                            </li>
+                        @endallowed
                     </ul>
                 </li>
+                @endif
 
 
                 <!-- Start::slide -->

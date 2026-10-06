@@ -93,7 +93,7 @@
                             <tr>
                                 <th>Status</th>
                                 <td>
-                                    @if($user->is_active == 1)
+                                    @if($user->is_active)
                                         <span class="badge bg-outline-success px-2">Active</span>
                                     @else
                                         <span class="badge bg-outline-danger px-2">Inactive</span>
