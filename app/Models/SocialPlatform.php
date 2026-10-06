@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
 
-class Project extends Model
+class SocialPlatform extends Model
 {
     protected $fillable = [
         'name',
@@ -22,39 +22,39 @@ class Project extends Model
         ];
     }
 
-    public function dailyReportCalls(): HasMany
+    public function dailyReportReplies(): HasMany
     {
-        return $this->hasMany(DailyReportProjectCall::class);
+        return $this->hasMany(DailyReportPlatformReply::class);
     }
 
     /**
-     * Create a new project, or update the given one, from validated data.
+     * Create a new social platform, or update the given one, from validated data.
      */
-    public static function createOrUpdateProject(array $data, ?self $project = null): self
+    public static function createOrUpdateSocialPlatform(array $data, ?self $socialPlatform = null): self
     {
-        $project ??= new self();
+        $socialPlatform ??= new self();
 
-        $project->fill([
+        $socialPlatform->fill([
             'name'   => $data['name'],
             'notes'  => $data['notes'] ?? null,
             'active' => $data['active'] ?? true,
         ]);
 
-        if ($project->isDirty('name') || empty($project->slug)) {
-            $project->slug = self::generateUniqueSlug($project->name, $project->id);
+        if ($socialPlatform->isDirty('name') || empty($socialPlatform->slug)) {
+            $socialPlatform->slug = self::generateUniqueSlug($socialPlatform->name, $socialPlatform->id);
         }
 
-        $project->save();
+        $socialPlatform->save();
 
-        return $project;
+        return $socialPlatform;
     }
 
     /**
-     * Build a slug from the name, suffixing it when another project already uses it.
+     * Build a slug from the name, suffixing it when another platform already uses it.
      */
     public static function generateUniqueSlug(string $name, ?int $ignoreId = null): string
     {
-        $base = Str::slug($name) ?: 'project';
+        $base = Str::slug($name) ?: 'platform';
         $slug = $base;
         $suffix = 1;
 

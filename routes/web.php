@@ -6,6 +6,8 @@ use App\Http\Controllers\Backend\SiteSettingsController;
 use App\Http\Controllers\Admin\RoleController;
 use App\Http\Controllers\Admin\UsersController;
 use App\Http\Controllers\ProjectController;
+use App\Http\Controllers\SocialPlatformController;
+use App\Http\Controllers\DailyReportController;
 
 Route::get('/', function () {
     if (auth()->check())
@@ -31,9 +33,13 @@ Route::middleware([
         Route::resource('/roles',RoleController::class);
         Route::resource('/users',UsersController::class);
     });
+    // registered before the resource so "team" is not read as a report id
+    Route::get('daily-reports/team', [DailyReportController::class, 'team'])->name('daily-reports.team');
     Route::resources([
         'site-settings'             => SiteSettingsController::class,
         'projects'                  => ProjectController::class,
+        'social-platforms'          => SocialPlatformController::class,
+        'daily-reports'             => DailyReportController::class,
     ]);
     Route::post('site-settings/theme', [SiteSettingsController::class, 'saveTheme'])->name('site-settings.theme');
 });

@@ -32,6 +32,7 @@ class DatabaseSeeder extends Seeder
             AclResourceSeeder::class,
             ResourceSeeder::class,
             AclPermissionSeeder::class,
+            SocialPlatformSeeder::class,
         ]);
         // Re-enable foreign key checks after seeding
         DB::statement('SET FOREIGN_KEY_CHECKS=1;');

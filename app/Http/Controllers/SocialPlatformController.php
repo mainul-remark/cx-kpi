@@ -2,12 +2,12 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Project;
+use App\Models\SocialPlatform;
 use Illuminate\Http\Request;
-use App\Http\Requests\ProjectRequest;
+use App\Http\Requests\SocialPlatformRequest;
 use Yajra\DataTables\DataTables;
 
-class ProjectController extends Controller
+class SocialPlatformController extends Controller
 {
     /**
      * Display a listing of the resource.
@@ -15,15 +15,15 @@ class ProjectController extends Controller
     public function index(Request $request)
     {
         if (!$request->ajax()) {
-            return view('backend.projects.index');
+            return view('backend.social-platforms.index');
         }
 
-        $projects = Project::query()
+        $socialPlatforms = SocialPlatform::query()
             ->select(['id', 'name', 'notes', 'slug', 'active', 'created_at'])
             // newest first until the user sorts by a column
             ->when(!$request->has('order'), fn ($query) => $query->latest());
 
-        return DataTables::of($projects)
+        return DataTables::of($socialPlatforms)
             ->addIndexColumn()
             ->toJson();
     }
@@ -39,85 +39,85 @@ class ProjectController extends Controller
     /**
      * Store a newly created resource in storage.
      */
-    public function store(ProjectRequest $request)
+    public function store(SocialPlatformRequest $request)
     {
         try {
-            $project = Project::createOrUpdateProject($request->validated());
+            $socialPlatform = SocialPlatform::createOrUpdateSocialPlatform($request->validated());
         } catch (\Throwable $th) {
             report($th);
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to create project. Please try again.',
+                'message' => 'Failed to create social platform. Please try again.',
             ], 500);
         }
         return response()->json([
             'success' => true,
-            'message' => 'Project created successfully',
-            'data' => $project,
+            'message' => 'Social platform created successfully',
+            'data' => $socialPlatform,
         ], 201);
     }
 
     /**
      * Display the specified resource.
      */
-    public function show(Project $project)
+    public function show(SocialPlatform $socialPlatform)
     {
-        return response()->json($project);
+        return response()->json($socialPlatform);
     }
 
     /**
      * Show the form for editing the specified resource.
      */
-    public function edit(Project $project)
+    public function edit(SocialPlatform $socialPlatform)
     {
-        return response()->json($project);
+        return response()->json($socialPlatform);
     }
 
     /**
      * Update the specified resource in storage.
      */
-    public function update(ProjectRequest $request, Project $project)
+    public function update(SocialPlatformRequest $request, SocialPlatform $socialPlatform)
     {
         try {
-            $project = Project::createOrUpdateProject($request->validated(), $project);
+            $socialPlatform = SocialPlatform::createOrUpdateSocialPlatform($request->validated(), $socialPlatform);
         } catch (\Throwable $th) {
             report($th);
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to update project. Please try again.',
+                'message' => 'Failed to update social platform. Please try again.',
             ], 500);
         }
         return response()->json([
             'success' => true,
-            'message' => 'Project updated successfully',
-            'data' => $project,
+            'message' => 'Social platform updated successfully',
+            'data' => $socialPlatform,
         ]);
     }
 
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(Project $project)
+    public function destroy(SocialPlatform $socialPlatform)
     {
-        if ($project->dailyReportCalls()->exists()) {
+        if ($socialPlatform->dailyReportReplies()->exists()) {
             return response()->json([
                 'success' => false,
-                'message' => 'This project has daily report data. Deactivate it instead of deleting it.',
+                'message' => 'This social platform has daily report data. Deactivate it instead of deleting it.',
             ], 409);
         }
 
         try {
-            $project->delete();
+            $socialPlatform->delete();
         } catch (\Throwable $th) {
             report($th);
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to delete project. Please try again.',
+                'message' => 'Failed to delete social platform. Please try again.',
             ], 500);
         }
         return response()->json([
             'success' => true,
-            'message' => 'Project deleted successfully',
+            'message' => 'Social platform deleted successfully',
         ]);
     }
 }

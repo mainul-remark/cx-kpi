@@ -110,6 +110,11 @@ class User extends Authenticatable
         return $this->hasMany(UserRole::class, 'user_id','id');
     }
 
+    public function dailyReports(): HasMany
+    {
+        return $this->hasMany(DailyReport::class);
+    }
+
     public static function checkValidation($request)
     {
         return Validator::make($request->all(), [
