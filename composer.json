@@ -17,7 +17,6 @@
         "mainul/chunk-uploader": "^1.0",
         "mainul/custom-helpers": "^1.1",
         "opcodesio/log-viewer": "^3.24",
-        "rappasoft/laravel-livewire-tables": "^3.7",
         "spatie/laravel-activitylog": "^4.12",
         "uzzal/acl": "^3.0",
         "yajra/laravel-datatables": "^12.0"
