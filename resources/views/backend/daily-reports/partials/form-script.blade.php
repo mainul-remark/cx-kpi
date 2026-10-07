@@ -3,6 +3,7 @@
         const reportUrl = @json(route('daily-reports.index'));
         const createUrl = @json(route('daily-reports.create'));
         const reportId = @json($isEdit ? $report->id : null);
+        const isNewReport = @json(!$report);
         const can = {
             index: @json((bool) allowed('daily-reports.index')),
             show: @json((bool) allowed('daily-reports.show'))
@@ -60,6 +61,27 @@
         $form.on('submit', function (e) {
             e.preventDefault();
 
+            // saving over a report that is already there needs no warning
+            if (!isNewReport) {
+                saveReport();
+                return;
+            }
+
+            Swal.fire({
+                title: "Submit this report?",
+                text: "Once the report is submitted, it can't be edited or deleted later. Please make sure all the information is correct.",
+                icon: "warning",
+                showCancelButton: true,
+                confirmButtonColor: "#3085d6",
+                cancelButtonColor: "#d33",
+                confirmButtonText: "Yes, submit it!",
+                cancelButtonText: "Review again"
+            }).then(function (result) {
+                if (result.isConfirmed) saveReport();
+            });
+        });
+
+        function saveReport() {
             const buttonText = $submitBtn.text();
 
             clearErrors();
@@ -92,6 +114,6 @@
                 }
                 toastr.error((xhr.responseJSON && xhr.responseJSON.message) || 'Failed to save daily report.');
             });
-        });
+        }
     });
 </script>

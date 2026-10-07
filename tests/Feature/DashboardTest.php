@@ -8,6 +8,7 @@ use App\Models\Holiday;
 use App\Models\Project;
 use App\Models\SocialPlatform;
 use App\Models\User;
+use App\Models\UserLeave;
 use Illuminate\Auth\Middleware\EnsureEmailIsVerified;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -151,6 +152,25 @@ class DashboardTest extends TestCase
         $this->data($this->manager, ['preset' => '15days'])->assertJsonPath('range.from', '2026-09-22');
         $this->data($this->manager, ['preset' => 'month'])->assertJsonPath('range.from', '2026-10-01');
         $this->data($this->manager, [])->assertJsonPath('range.from', '2026-10-01');
+    }
+
+    public function test_a_full_day_of_leave_is_not_a_report_due(): void
+    {
+        UserLeave::setForUsers([$this->otherAgent->id], ['2026-10-05'], ['portion' => 'full', 'type' => 'sick']);
+        // a half day still takes a report, and a leave outside the range changes nothing
+        UserLeave::setForUsers([$this->agent->id], ['2026-10-05'], ['portion' => 'half', 'type' => 'sick']);
+        UserLeave::setForUsers([$this->agent->id], ['2026-10-03'], ['portion' => 'full', 'type' => 'sick']);
+
+        // 2 working days for 2 field users, less the day of leave
+        $this->data($this->manager, ['preset' => 'custom', 'from' => '2026-10-05', 'to' => '2026-10-06'])
+            ->assertOk()
+            ->assertJsonPath('submissions.submitted', 3)
+            ->assertJsonPath('submissions.expected', 3)
+            ->assertJsonPath('submissions.pct', 100);
+
+        $this->data($this->manager, ['preset' => 'custom', 'from' => '2026-10-05', 'to' => '2026-10-05', 'user_id' => $this->otherAgent->id])
+            ->assertJsonPath('submissions.expected', 0)
+            ->assertJsonPath('submissions.pct', null);
     }
 
     public function test_attendance_sheet_marks_each_day_of_each_field_user(): void

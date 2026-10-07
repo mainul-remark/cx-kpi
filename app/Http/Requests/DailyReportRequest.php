@@ -5,6 +5,7 @@ namespace App\Http\Requests;
 use App\Models\DailyReport;
 use App\Models\Project;
 use App\Models\SocialPlatform;
+use App\Models\UserLeave;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -57,6 +58,19 @@ class DailyReportRequest extends FormRequest
 
                     if ($taken) {
                         $fail('You already have a report for this date.');
+                    }
+                },
+                // a half day of leave is still worked, a full day is not
+                function (string $attribute, mixed $value, \Closure $fail) {
+                    $onLeave = UserLeave::query()
+                        ->where('user_id', $this->user()->id)
+                        ->whereDate('leave_date', $value)
+                        ->where('portion', UserLeave::PORTION_FULL)
+                        ->where('status', UserLeave::STATUS_APPROVED)
+                        ->exists();
+
+                    if ($onLeave) {
+                        $fail('You are on leave on this date, so no report can be submitted for it.');
                     }
                 },
             ],

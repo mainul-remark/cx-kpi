@@ -10,3 +10,6 @@ Artisan::command('inspire', function () {
 
 // Run every day at midnight to auto-expire KV assignments
 Schedule::command('kv:expire-assignments')->dailyAt('00:00');
+
+// Run on the 1st of every month to freeze the KPI scores of the month that just ended
+Schedule::command('kpi:snapshot')->monthlyOn(1, '00:30');

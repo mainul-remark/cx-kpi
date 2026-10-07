@@ -146,6 +146,7 @@
 @endsection
 
 @push('scripts')
+    @include('backend.includes.plugins.sweetalert2')
     @include('backend.includes.plugins.toastr')
     @include('backend.daily-reports.partials.form-script')
 @endpush

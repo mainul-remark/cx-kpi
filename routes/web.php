@@ -11,6 +11,9 @@ use App\Http\Controllers\DailyReportController;
 use App\Http\Controllers\DailyTargetController;
 use App\Http\Controllers\HolidayController;
 use App\Http\Controllers\AttendanceController;
+use App\Http\Controllers\UserLeaveController;
+use App\Http\Controllers\EmployeeKpiController;
+use App\Http\Controllers\LeaveRequestController;
 
 Route::get('/', function () {
     if (auth()->check())
@@ -48,7 +51,17 @@ Route::middleware([
     Route::post('holidays/import', [HolidayController::class, 'import'])->name('holidays.import');
     Route::get('holidays/sample', [HolidayController::class, 'sample'])->name('holidays.sample');
     Route::resource('holidays', HolidayController::class)->except(['create', 'show']);
+    // named, as "leaves" would otherwise be bound as "leaf"
+    Route::resource('leaves', UserLeaveController::class)->except(['create', 'show'])->parameters(['leaves' => 'leave']);
+    Route::post('leaves/{leave}/approve', [UserLeaveController::class, 'approve'])->name('leaves.approve');
+    Route::post('leaves/{leave}/reject', [UserLeaveController::class, 'reject'])->name('leaves.reject');
+    Route::resource('my-leaves', LeaveRequestController::class)->only(['index', 'store', 'destroy'])->parameters(['my-leaves' => 'leave']);
     Route::get('attendance', [AttendanceController::class, 'index'])->name('attendance.index');
+    Route::get('kpi', [EmployeeKpiController::class, 'index'])->name('kpi.index');
+    // registered before the user route so "export" and "monthly" are not read as a user id
+    Route::get('kpi/export', [EmployeeKpiController::class, 'export'])->name('kpi.export');
+    Route::get('kpi/monthly', [EmployeeKpiController::class, 'monthly'])->name('kpi.monthly');
+    Route::get('kpi/{user}', [EmployeeKpiController::class, 'show'])->name('kpi.show');
     Route::post('site-settings/theme', [SiteSettingsController::class, 'saveTheme'])->name('site-settings.theme');
 });
 

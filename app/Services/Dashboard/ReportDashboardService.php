@@ -4,6 +4,8 @@ namespace App\Services\Dashboard;
 
 use App\Models\Holiday;
 use App\Models\User;
+use App\Models\UserLeave;
+use App\Services\Kpi\EmployeeKpiService;
 use Carbon\CarbonPeriod;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Carbon;
@@ -39,7 +41,7 @@ class ReportDashboardService
     /**
      * Where reports and targets keep the same figures.
      */
-    private const SOURCES = [
+    public const SOURCES = [
         'report' => [
             'table' => 'daily_reports',
             'date' => 'report_date',
@@ -55,6 +57,10 @@ class ReportDashboardService
             'key' => 'daily_target_id',
         ],
     ];
+
+    public function __construct(private EmployeeKpiService $kpi)
+    {
+    }
 
     /**
      * The first and last day of a preset, or the given days for a custom range.
@@ -128,8 +134,9 @@ class ReportDashboardService
     /**
      * The attendance sheet of the field users: a report on a day is what counts as being present.
      *
-     * Each user carries one mark per day of the range: P present, A absent, O weekly off day,
-     * H holiday, F a day still to come and N a day before the user was added.
+     * Each user carries one mark per day of the range: P present, A absent, L a full day of official leave,
+     * O weekly off day, H holiday, F a day still to come and N a day before the user was added.
+     * A day of leave counts as neither present nor absent.
      */
     public function attendance(string $from, string $to, ?int $userId): array
     {
@@ -164,10 +171,12 @@ class ReportDashboardService
                 $reported[$report->user_id][substr((string) $report->report_date, 0, 10)] = true;
             });
 
-        $rows = $users->map(function (User $user) use ($days, $reported) {
+        $leaves = UserLeave::portionsByUser($from, $to, $users->modelKeys());
+
+        $rows = $users->map(function (User $user) use ($days, $reported, $leaves) {
             $joined = $user->created_at?->toDateString();
             $marks = '';
-            $present = $absent = 0;
+            $present = $absent = $leave = 0;
 
             foreach ($days as $day) {
                 $mark = $day['mark'];
@@ -176,10 +185,14 @@ class ReportDashboardService
                     $mark = 'P';
                 } elseif ($mark === 'A' && $joined && $day['date'] < $joined) {
                     $mark = 'N';
+                } elseif (in_array($mark, ['A', 'F'], true) && ($leaves[$user->id][$day['date']] ?? null) === UserLeave::PORTION_FULL) {
+                    // a half day of leave is still worked, so only a full day takes the place of a report
+                    $mark = 'L';
                 }
 
                 $present += $mark === 'P' ? 1 : 0;
                 $absent += $mark === 'A' ? 1 : 0;
+                $leave += $mark === 'L' ? 1 : 0;
                 $marks .= $mark;
             }
 
@@ -189,6 +202,7 @@ class ReportDashboardService
                 'marks' => $marks,
                 'present' => $present,
                 'absent' => $absent,
+                'leave' => $leave,
                 'pct' => $present + $absent > 0 ? round($present / ($present + $absent) * 100, 1) : null,
             ];
         });
@@ -268,14 +282,27 @@ class ReportDashboardService
     }
 
     /**
-     * How many reports came in against how many were due: one per user per working day up to today.
+     * How many reports came in against how many were due: one per user per working day up to today,
+     * less the days a user was on a full day of official leave.
      */
     private function submissions(string $from, string $to, ?int $userId, int $submitted): array
     {
         $until = min($to, today()->toDateString());
-        $workingDays = $from <= $until ? count(Holiday::workingDays($from, $until)) : 0;
-        $users = $userId ? 1 : User::query()->where('usages_sector', 'field')->count();
-        $expected = $workingDays * $users;
+        $workingDays = $from <= $until ? Holiday::workingDays($from, $until) : [];
+        $userIds = $userId ? [$userId] : User::query()->where('usages_sector', 'field')->pluck('id')->all();
+
+        $onLeave = 0;
+        if (!empty($workingDays)) {
+            $working = array_flip($workingDays);
+
+            foreach (UserLeave::portionsByUser($from, $until, $userIds) as $days) {
+                foreach ($days as $date => $portion) {
+                    $onLeave += $portion === UserLeave::PORTION_FULL && isset($working[$date]) ? 1 : 0;
+                }
+            }
+        }
+
+        $expected = count($workingDays) * count($userIds) - $onLeave;
 
         return [
             'submitted' => $submitted,
@@ -341,39 +368,34 @@ class ReportDashboardService
 
     /**
      * One row per field user, and per anyone else who reported, with the best achievement first.
+     *
+     * The achievement is the user's KPI: reports matched to targets day by day, with official leave left out.
      */
     private function users(string $from, string $to, ?int $userId, bool $withTargets): array
     {
         $actual = $this->totals('report', $from, $to, $userId, 'user_id');
-        $target = $withTargets ? $this->totals('target', $from, $to, $userId, 'user_id') : collect();
 
         $users = User::query()
             ->when($userId, fn ($query) => $query->whereKey($userId))
             ->when(!$userId, fn ($query) => $query->where('usages_sector', 'field')->orWhereIn('id', $actual->keys()))
             ->orderBy('name')
-            ->get(['id', 'name']);
+            ->get(['id', 'name', 'created_at']);
+
+        $kpis = $withTargets ? $this->kpi->forUsers($users, $from, $to) : collect();
 
         return $users
-            ->map(function (User $user) use ($actual, $target) {
+            ->map(function (User $user) use ($actual, $kpis) {
                 $done = $actual->get((string) $user->id, []);
-                $goal = $target->get((string) $user->id, []);
+                $kpi = $kpis->get($user->id);
                 $row = ['id' => $user->id, 'name' => $user->name, 'reports' => (int) ($done['entries'] ?? 0)];
-                $targetTotal = 0;
-                $againstTarget = 0;
 
                 foreach (array_keys(self::METRICS) as $metric) {
                     $row[$metric] = (int) ($done[$metric] ?? 0);
-
-                    // only the activities that have a target count towards the achievement
-                    if (isset($goal[$metric])) {
-                        $targetTotal += $goal[$metric];
-                        $againstTarget += $row[$metric];
-                    }
                 }
 
                 $row['total'] = array_sum(array_intersect_key($row, self::METRICS));
-                $row['target_total'] = $targetTotal > 0 ? $targetTotal : null;
-                $row['achievement_pct'] = $targetTotal > 0 ? round($againstTarget / $targetTotal * 100, 1) : null;
+                $row['target_total'] = ($kpi['target_total'] ?? 0) > 0 ? $kpi['target_total'] : null;
+                $row['achievement_pct'] = $kpi['pct'] ?? null;
 
                 return $row;
             })

@@ -150,6 +150,15 @@
                     </li>
                 @endallowed
 
+                @allowed('kpi.index')
+                    <li class="slide">
+                        <a href="{{ route('kpi.index') }}" class="side-menu__item">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="side-menu__icon" viewBox="0 0 24 24"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zM7 10h2v7H7zm4-3h2v10h-2zm4 6h2v4h-2z"/></svg>
+                            <span class="side-menu__label">KPI</span>
+                        </a>
+                    </li>
+                @endallowed
+
 {{--                @allowed('daily-targets.index')--}}
 {{--                    <li class="slide">--}}
 {{--                        <a href="{{ route('daily-targets.index') }}" class="side-menu__item">--}}
@@ -168,7 +177,7 @@
 {{--                    </li>--}}
 {{--                @endallowed--}}
                 <!-- Reports menu with nested sub menu -->
-                @if(allowed('daily-reports.create') || allowed('daily-reports.index'))
+                @if(allowed('daily-reports.create') || allowed('daily-reports.index') || allowed('my-leaves.index'))
                 <li class="slide has-sub">
                     <a href="javascript:void(0);" class="side-menu__item">
                         <svg xmlns="http://www.w3.org/2000/svg" class="side-menu__icon" viewBox="0 0 24 24"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zm-8.5-2.5l6-6-1.41-1.41-4.59 4.58-2.09-2.08L7 13l3.5 3.5z"/></svg>
@@ -189,11 +198,16 @@
                                 <a href="{{ route('daily-reports.index') }}" class="side-menu__item">Report History</a>
                             </li>
                         @endallowed
+                        @allowed('my-leaves.index')
+                            <li class="slide">
+                                <a href="{{ route('my-leaves.index') }}" class="side-menu__item">My Leaves</a>
+                            </li>
+                        @endallowed
                     </ul>
                 </li>
                 @endif
                 <!-- Targets menu with nested sub menu -->
-                @if(allowed('daily-targets.index') || allowed('holidays.index'))
+                @if(allowed('daily-targets.index') || allowed('holidays.index') || allowed('leaves.index'))
                 <li class="slide has-sub">
                     <a href="javascript:void(0);" class="side-menu__item">
                         <svg xmlns="http://www.w3.org/2000/svg" class="side-menu__icon" viewBox="0 0 24 24"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm0-6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
@@ -212,6 +226,11 @@
                         @allowed('holidays.index')
                             <li class="slide">
                                 <a href="{{ route('holidays.index') }}" class="side-menu__item">Holidays</a>
+                            </li>
+                        @endallowed
+                        @allowed('leaves.index')
+                            <li class="slide">
+                                <a href="{{ route('leaves.index') }}" class="side-menu__item">Leaves</a>
                             </li>
                         @endallowed
                     </ul>

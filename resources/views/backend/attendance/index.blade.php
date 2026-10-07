@@ -14,6 +14,8 @@
         .att-P { background: rgba(27, 175, 122, .16); color: #0f7a54; }
         .att-A { background: rgba(227, 73, 72, .16); color: #b3302f; }
         .att-O, .att-H { background: rgba(128, 128, 128, .12); color: #7a7a7a; }
+        .att-L { background: rgba(59, 130, 246, .16); color: #1d5fc4; }
+        [data-theme-mode="dark"] .att-L { color: #8ab4f8; }
         [data-theme-mode="dark"] .att-P { color: #4fd3a3; }
         [data-theme-mode="dark"] .att-A { color: #f08a89; }
         [data-theme-mode="dark"] .att-O, [data-theme-mode="dark"] .att-H { color: #a8a8a8; }
@@ -96,9 +98,10 @@
                         </div>
                         <div class="card-body">
                             <p class="text-muted mb-3">
-                                A user is present on a day they submitted a daily report for.
+                                A user is present on a day they submitted a daily report for. A day of official leave counts as neither present nor absent.
                                 <span class="att-key att-P">P</span> Present
                                 <span class="att-key att-A">A</span> Absent
+                                <span class="att-key att-L">L</span> On leave
                                 <span class="att-key att-O">O</span> Off day
                                 <span class="att-key att-H">H</span> Holiday
                             </p>

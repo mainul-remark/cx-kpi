@@ -16,6 +16,7 @@
         const marks = {
             P: { text: 'P', label: 'Present' },
             A: { text: 'A', label: 'Absent' },
+            L: { text: 'L', label: 'On leave' },
             O: { text: 'O', label: 'Off day' },
             H: { text: 'H', label: 'Holiday' },
             F: { text: '', label: 'Not due yet' },
@@ -78,10 +79,11 @@
 
         function renderKpis(data) {
             const rows = data.attendance.rows;
-            let present = 0, absent = 0;
+            let present = 0, absent = 0, leave = 0;
             rows.forEach(function (row) {
                 present += row.present;
                 absent += row.absent;
+                leave += row.leave;
             });
             const due = present + absent;
 
@@ -89,7 +91,7 @@
                 tile('Field Users', rows.length, 'on this sheet') +
                 tile('Present', present, 'days with a report') +
                 tile('Absent', absent, 'working days without one') +
-                tile('Attendance', due > 0 ? (Math.round(present / due * 1000) / 10) + '%' : '&mdash;', due > 0 ? 'of ' + due + ' days due' : 'No working day in this period yet')
+                tile('Attendance', due > 0 ? (Math.round(present / due * 1000) / 10) + '%' : '&mdash;', (due > 0 ? 'of ' + due + ' days due' : 'No working day in this period yet') + (leave > 0 ? ', ' + leave + ' on leave' : ''))
             );
         }
 
@@ -151,14 +153,14 @@
             }
 
             $table.find('thead').html(
-                '<tr><th rowspan="2" class="att-name">User</th><th rowspan="2" class="text-end">Present</th><th rowspan="2" class="text-end">Absent</th><th rowspan="2" class="text-end">Attendance</th>' + months + '</tr>' +
+                '<tr><th rowspan="2" class="att-name">User</th><th rowspan="2" class="text-end">Present</th><th rowspan="2" class="text-end">Absent</th><th rowspan="2" class="text-end">Leave</th><th rowspan="2" class="text-end">Attendance</th>' + months + '</tr>' +
                 '<tr>' + parts.map(function (part, index) {
                     return '<th class="att-day" title="' + escapeHtml(days[index].holiday || '') + '">' + part.number + '<small>' + part.weekday + '</small></th>';
                 }).join('') + '</tr>'
             );
 
             if (!rows.length) {
-                $table.find('tbody').html('<tr><td colspan="' + (days.length + 4) + '" class="text-center text-muted">No field user found.</td></tr>');
+                $table.find('tbody').html('<tr><td colspan="' + (days.length + 5) + '" class="text-center text-muted">No field user found.</td></tr>');
                 $('#attendancePager').addClass('d-none');
                 return;
             }
@@ -181,6 +183,7 @@
                     '<td class="att-name">' + name + '</td>' +
                     '<td class="text-end">' + row.present + '</td>' +
                     '<td class="text-end">' + row.absent + '</td>' +
+                    '<td class="text-end">' + row.leave + '</td>' +
                     '<td class="text-end">' + (row.pct === null ? '&mdash;' : row.pct + '%') + '</td>' +
                     cells +
                     '</tr>';
@@ -205,10 +208,10 @@
             if (!lastData) return;
 
             const days = lastData.attendance.days;
-            const rows = [['User', 'Present', 'Absent', 'Attendance %'].concat(days.map(function (day) { return day.date; }))];
+            const rows = [['User', 'Present', 'Absent', 'Leave', 'Attendance %'].concat(days.map(function (day) { return day.date; }))];
 
             lastData.attendance.rows.forEach(function (row) {
-                rows.push([row.name, row.present, row.absent, row.pct].concat(row.marks.split('').map(function (mark) {
+                rows.push([row.name, row.present, row.absent, row.leave, row.pct].concat(row.marks.split('').map(function (mark) {
                     return marks[mark].label;
                 })));
             });

@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\DailyReport;
 use App\Models\Holiday;
 use App\Models\User;
+use App\Models\UserLeave;
 use Illuminate\Auth\Middleware\EnsureEmailIsVerified;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -79,6 +80,25 @@ class AttendanceTest extends TestCase
         $this->assertSame('OAHAPF', $rows['Agent Two']['marks']);
         $this->assertSame(1, $rows['Agent Two']['present']);
         $this->assertSame(2, $rows['Agent Two']['absent']);
+    }
+
+    public function test_a_full_day_of_leave_is_neither_present_nor_absent(): void
+    {
+        UserLeave::setForUsers([$this->otherAgent->id], ['2026-10-05', '2026-10-07'], ['portion' => 'full', 'type' => 'casual']);
+        // a half day is still worked, so it stays an absence without a report
+        UserLeave::setForUsers([$this->otherAgent->id], ['2026-10-03'], ['portion' => 'half', 'type' => 'casual']);
+
+        // Friday the 2nd to Wednesday the 7th, which is tomorrow
+        $response = $this->data($this->manager, ['preset' => 'custom', 'from' => '2026-10-02', 'to' => '2026-10-07'])->assertOk();
+
+        $rows = collect($response->json('attendance.rows'))->keyBy('name');
+
+        $this->assertSame('OAALPL', $rows['Agent Two']['marks']);
+        $this->assertSame(1, $rows['Agent Two']['present']);
+        $this->assertSame(2, $rows['Agent Two']['absent']);
+        $this->assertSame(2, $rows['Agent Two']['leave']);
+        $this->assertEquals(33.3, $rows['Agent Two']['pct']);
+        $this->assertSame(0, $rows['Agent One']['leave']);
     }
 
     public function test_periods_cover_today_this_week_15_days_and_this_month(): void

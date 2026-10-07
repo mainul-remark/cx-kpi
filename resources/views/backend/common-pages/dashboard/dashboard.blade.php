@@ -20,6 +20,8 @@
         .db-att-P { background: rgba(27, 175, 122, .16); color: #0f7a54; }
         .db-att-A { background: rgba(227, 73, 72, .16); color: #b3302f; }
         .db-att-O, .db-att-H { background: rgba(128, 128, 128, .12); color: #7a7a7a; }
+        .db-att-L { background: rgba(59, 130, 246, .16); color: #1d5fc4; }
+        [data-theme-mode="dark"] .db-att-L { color: #8ab4f8; }
         [data-theme-mode="dark"] .db-att-P { color: #4fd3a3; }
         [data-theme-mode="dark"] .db-att-A { color: #f08a89; }
         [data-theme-mode="dark"] .db-att-O, [data-theme-mode="dark"] .db-att-H { color: #a8a8a8; }
@@ -219,9 +221,10 @@
                             </div>
                             <div class="card-body">
                                 <p class="text-muted mb-3">
-                                    A user is present on a day they submitted a daily report for.
+                                    A user is present on a day they submitted a daily report for. A day of official leave counts as neither present nor absent.
                                     <span class="db-att-key db-att-P">P</span> Present
                                     <span class="db-att-key db-att-A">A</span> Absent
+                                    <span class="db-att-key db-att-L">L</span> On leave
                                     <span class="db-att-key db-att-O">O</span> Off day
                                     <span class="db-att-key db-att-H">H</span> Holiday
                                 </p>
