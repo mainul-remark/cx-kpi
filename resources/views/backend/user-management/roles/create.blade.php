@@ -81,7 +81,7 @@
                                                         {{ in_array($act['id'], old('resource', [])) ? 'checked' : '' }}>
 
                                                     <label class="form-check-label ms-1" for="chk{{ $act['id'] }}">
-                                                        {{ $act['name'] ?? '' }}
+                                                        <span class="text-primary">{{ $act['label'] ?? '' }}</span> ({{ $act['name'] ?? '' }})
                                                     </label>
                                                 </div>
                                             @endforeach

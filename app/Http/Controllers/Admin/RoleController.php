@@ -30,6 +30,7 @@ class RoleController extends Controller
             $data[$resource->controller][] = [
                 'id'    =>  $resource->resource_id??'',
                 'name'  =>  $resource->name??'',
+                'label' =>  $resource->label??'',
             ];
         }
         return view('backend.user-management.roles.create',[
