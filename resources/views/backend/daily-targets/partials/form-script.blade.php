@@ -37,38 +37,6 @@
             }
         }
 
-        function updateSums() {
-            $('[data-sum-of]').each(function () {
-                let sum = 0;
-                $form.find('.' + $(this).data('sum-of')).each(function () {
-                    sum += parseInt($(this).val(), 10) || 0;
-                });
-                $(this).text(sum);
-            });
-        }
-
-        function markPreset() {
-            const from = $('#from').val();
-            const to = $('#to').val();
-
-            $('.target-preset').each(function () {
-                const active = $(this).data('from') === from && $(this).data('to') === to;
-                $(this).toggleClass('btn-primary', active).toggleClass('btn-outline-primary', !active);
-            });
-        }
-
-        updateSums();
-        markPreset();
-        $form.on('input', '.platform-count, .project-count', updateSums);
-        $('#from, #to').on('change', markPreset);
-
-        $('.target-preset').on('click', function () {
-            $('#from').val($(this).data('from')).removeClass('is-invalid');
-            $('#to').val($(this).data('to')).removeClass('is-invalid');
-            $form.find('[data-error-for="from"], [data-error-for="to"]').text('').removeClass('d-block');
-            markPreset();
-        });
-
         $('#selectAllUsersBtn').on('click', function () {
             $users.find('option').prop('selected', true);
             $users.trigger('change');

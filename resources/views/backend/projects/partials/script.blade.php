@@ -38,10 +38,18 @@
                 { data: 'slug', name: 'slug' },
                 {
                     data: 'active', name: 'active', searchable: false,
-                    render: function (data) {
-                        return data
+                    render: function (data, type, row) {
+                        if (type !== 'display') return data;
+
+                        let html = data
                             ? '<span class="badge text-bg-success">Active</span>'
                             : '<span class="badge text-bg-danger">Inactive</span>';
+
+                        if (row.has_outbound_calls) html += ' <span class="badge text-bg-primary">Outbound Calls</span>';
+                        if (row.has_comments) html += ' <span class="badge text-bg-info">Comments</span>';
+                        if (row.has_message_replies) html += ' <span class="badge text-bg-warning">Message Replies</span>';
+
+                        return html;
                     }
                 },
                 {
@@ -98,6 +106,9 @@
             $('#project_name').val(project.name);
             $('#project_slug').val(project.slug);
             $('#project_notes').val(project.notes || '');
+            $('#project_has_outbound_calls').prop('checked', !!project.has_outbound_calls);
+            $('#project_has_comments').prop('checked', !!project.has_comments);
+            $('#project_has_message_replies').prop('checked', !!project.has_message_replies);
             $('#project_active').prop('checked', !!project.active);
         }
 

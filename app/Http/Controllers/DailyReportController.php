@@ -9,18 +9,25 @@ use App\Models\SocialPlatform;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
 use Yajra\DataTables\DataTables;
 
 class DailyReportController extends Controller
 {
     /**
-     * Display the signed-in user's own reports.
+     * Display the reports: a corporate user sees every user's, anyone else only their own.
      */
     public function index(Request $request)
     {
+        if ($this->canViewAll($request)) {
+            return $this->teamListing($request, 'daily-reports.index');
+        }
+
         if (!$request->ajax()) {
-            return view('backend.daily-reports.index', ['scope' => 'own', 'users' => collect()]);
+            return view('backend.daily-reports.index', [
+                'scope' => 'own',
+                'users' => collect(),
+                'listRoute' => 'daily-reports.index',
+            ]);
         }
 
         return $this->reportTable($request, DailyReport::query()->where('user_id', $request->user()->id));
@@ -31,10 +38,19 @@ class DailyReportController extends Controller
      */
     public function team(Request $request)
     {
+        return $this->teamListing($request, 'daily-reports.team');
+    }
+
+    /**
+     * The listing of every user's reports, filterable by user.
+     */
+    private function teamListing(Request $request, string $listRoute)
+    {
         if (!$request->ajax()) {
             return view('backend.daily-reports.index', [
                 'scope' => 'team',
                 'users' => User::query()->where('usages_sector', 'field')->orderBy('name')->get(['id', 'name']),
+                'listRoute' => $listRoute,
             ]);
         }
 
@@ -45,11 +61,19 @@ class DailyReportController extends Controller
     }
 
     /**
-     * Show the day-end form for a date, filled in when the user already reported that day.
+     * A corporate user may see the reports of every user.
+     */
+    private function canViewAll(Request $request): bool
+    {
+        return $request->user()->usages_sector === 'corporate';
+    }
+
+    /**
+     * Show the day-end form for today, filled in when the user already reported that day.
      */
     public function create(Request $request)
     {
-        $date = $this->resolveDate($request->query('date'));
+        $date = today()->toDateString();
 
         $report = DailyReport::query()
             ->where('user_id', $request->user()->id)
@@ -60,12 +84,12 @@ class DailyReportController extends Controller
     }
 
     /**
-     * Store the user's report for a date, saving over the one already there.
+     * Store the user's report for today, saving over the one already there.
      */
     public function store(DailyReportRequest $request)
     {
         try {
-            $report = DailyReport::saveForUser($request->user(), $request->validated());
+            $report = DailyReport::saveForUser($request->user(), $request->validated(), null, $request->reportDate());
         } catch (\Throwable $th) {
             report($th);
             return response()->json([
@@ -85,7 +109,7 @@ class DailyReportController extends Controller
      */
     public function show(Request $request, DailyReport $dailyReport)
     {
-        abort_unless($this->isOwner($request, $dailyReport) || allowed('daily-reports.team'), 403);
+        abort_unless($this->isOwner($request, $dailyReport) || $this->canViewAll($request) || allowed('daily-reports.team'), 403);
 
         $dailyReport->load(['user:id,name', 'platformReplies.socialPlatform', 'projectCalls.project']);
 
@@ -115,7 +139,7 @@ class DailyReportController extends Controller
     public function update(DailyReportRequest $request, DailyReport $dailyReport)
     {
         try {
-            $report = DailyReport::saveForUser($request->user(), $request->validated(), $dailyReport);
+            $report = DailyReport::saveForUser($request->user(), $request->validated(), $dailyReport, $request->reportDate());
         } catch (\Throwable $th) {
             report($th);
             return response()->json([
@@ -158,52 +182,45 @@ class DailyReportController extends Controller
     }
 
     /**
-     * A usable report date from the query string: today unless it is a valid day that is not in the future.
-     */
-    private function resolveDate(mixed $date): string
-    {
-        $today = today()->toDateString();
-
-        if (!is_string($date) || !Carbon::hasFormat($date, 'Y-m-d')) {
-            return $today;
-        }
-
-        return $date > $today ? $today : $date;
-    }
-
-    /**
      * The entry form with one row per active platform and project, plus any the report already holds.
+     *
+     * Each row carries what the entity is switched on for, so the form shows only the inputs that apply.
      */
     private function form(?DailyReport $report, string $date)
     {
-        $replies = $report?->platformReplies()->get()->keyBy('social_platform_id') ?? collect();
-        $calls = $report?->projectCalls()->get()->keyBy('project_id') ?? collect();
+        $platforms = $report?->platformReplies()->get()->keyBy('social_platform_id') ?? collect();
+        $projects = $report?->projectCalls()->get()->keyBy('project_id') ?? collect();
+
+        $row = fn ($entity, $saved) => [
+            'id' => $entity->id,
+            'name' => $entity->name,
+            'active' => $entity->active,
+            'inbound_calls' => $entity->has_outbound_calls,
+            'comments' => $entity->has_comments,
+            'message_replies' => $entity->has_message_replies,
+            'values' => [
+                'inbound_calls' => $saved?->inbound_calls,
+                'comments' => $saved?->comments,
+                'message_replies' => $saved?->message_replies,
+            ],
+            'note' => $saved?->note,
+        ];
+
+        $columns = ['id', 'name', 'active', 'has_outbound_calls', 'has_comments', 'has_message_replies'];
 
         $platformRows = SocialPlatform::query()
             ->where('active', true)
-            ->orWhereIn('id', $replies->keys())
+            ->orWhereIn('id', $platforms->keys())
             ->orderBy('name')
-            ->get(['id', 'name', 'active'])
-            ->map(fn (SocialPlatform $platform) => [
-                'id' => $platform->id,
-                'name' => $platform->name,
-                'active' => $platform->active,
-                'count' => $replies->get($platform->id)?->total_replies,
-                'note' => $replies->get($platform->id)?->note,
-            ]);
+            ->get($columns)
+            ->map(fn (SocialPlatform $platform) => $row($platform, $platforms->get($platform->id)));
 
         $projectRows = Project::query()
             ->where('active', true)
-            ->orWhereIn('id', $calls->keys())
+            ->orWhereIn('id', $projects->keys())
             ->orderBy('name')
-            ->get(['id', 'name', 'active'])
-            ->map(fn (Project $project) => [
-                'id' => $project->id,
-                'name' => $project->name,
-                'active' => $project->active,
-                'count' => $calls->get($project->id)?->total_calls,
-                'note' => $calls->get($project->id)?->note,
-            ]);
+            ->get($columns)
+            ->map(fn (Project $project) => $row($project, $projects->get($project->id)));
 
         return view('backend.daily-reports.form', [
             'report' => $report,
@@ -216,7 +233,7 @@ class DailyReportController extends Controller
     }
 
     /**
-     * DataTables response for a report listing, with the per-report platform and project totals.
+     * DataTables response for a report listing, with the per-report comment and message totals.
      */
     private function reportTable(Request $request, Builder $reports)
     {
@@ -229,8 +246,10 @@ class DailyReportController extends Controller
         $reports
             ->select('daily_reports.*')
             ->with('user:id,name')
-            ->withSum('platformReplies as platform_replies_total', 'total_replies')
-            ->withSum('projectCalls as project_calls_total', 'total_calls')
+            ->withSum('platformReplies as platform_comments', 'comments')
+            ->withSum('projectCalls as project_comments', 'comments')
+            ->withSum('platformReplies as platform_messages', 'message_replies')
+            ->withSum('projectCalls as project_messages', 'message_replies')
             ->when($filters['from'] ?? null, fn ($query, $from) => $query->whereDate('report_date', '>=', $from))
             ->when($filters['to'] ?? null, fn ($query, $to) => $query->whereDate('report_date', '<=', $to))
             // latest day first until the user sorts by a column

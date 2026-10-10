@@ -14,17 +14,15 @@ class DailyTarget extends Model
         'target_date',
         'outbound_calls',
         'inbound_calls',
-        'message_replies',
         'set_by',
     ];
 
     protected function casts(): array
     {
         return [
-            'target_date'     => 'date:Y-m-d',
-            'outbound_calls'  => 'integer',
-            'inbound_calls'   => 'integer',
-            'message_replies' => 'integer',
+            'target_date'    => 'date:Y-m-d',
+            'outbound_calls' => 'integer',
+            'inbound_calls'  => 'integer',
         ];
     }
 
@@ -66,14 +64,13 @@ class DailyTarget extends Model
             foreach ($userIds as $userId) {
                 foreach ($dates as $date) {
                     $targets[] = [
-                        'user_id'         => $userId,
-                        'target_date'     => $date,
-                        'outbound_calls'  => $data['outbound_calls'] ?? null,
-                        'inbound_calls'   => $data['inbound_calls'] ?? null,
-                        'message_replies' => $data['message_replies'] ?? null,
-                        'set_by'          => $setBy,
-                        'created_at'      => $now,
-                        'updated_at'      => $now,
+                        'user_id'        => $userId,
+                        'target_date'    => $date,
+                        'outbound_calls' => $data['outbound_calls'] ?? null,
+                        'inbound_calls'  => $data['inbound_calls'] ?? null,
+                        'set_by'         => $setBy,
+                        'created_at'     => $now,
+                        'updated_at'     => $now,
                     ];
                 }
             }
@@ -82,7 +79,7 @@ class DailyTarget extends Model
                 self::query()->upsert(
                     $chunk,
                     ['user_id', 'target_date'],
-                    ['outbound_calls', 'inbound_calls', 'message_replies', 'set_by', 'updated_at']
+                    ['outbound_calls', 'inbound_calls', 'set_by', 'updated_at']
                 );
             }
 
@@ -91,18 +88,24 @@ class DailyTarget extends Model
                 ->whereIn('target_date', $dates)
                 ->pluck('id');
 
-            self::replaceRows(new DailyTargetPlatformReply(), $targetIds->all(), 'social_platform_id', 'total_replies', $data['platforms'] ?? []);
-            self::replaceRows(new DailyTargetProjectCall(), $targetIds->all(), 'project_id', 'total_calls', $data['projects'] ?? []);
+            self::replaceRows(new DailyTargetPlatformReply(), $targetIds->all(), 'social_platform_id', $data['platforms'] ?? []);
+            self::replaceRows(new DailyTargetProjectCall(), $targetIds->all(), 'project_id', $data['projects'] ?? []);
         });
     }
 
     /**
-     * Swap the child rows of the given targets for the submitted ones, skipping rows left without a count.
+     * The approximate targets a project or platform row can hold. They inform, the KPI does not count them.
      */
-    private static function replaceRows(Model $model, array $targetIds, string $key, string $countColumn, array $rows): void
+    private const ROW_COUNTS = ['inbound_calls', 'comments', 'message_replies'];
+
+    /**
+     * Swap the child rows of the given targets for the submitted ones, skipping rows left without any count.
+     */
+    private static function replaceRows(Model $model, array $targetIds, string $key, array $rows): void
     {
         $now = now();
-        $rows = array_filter($rows, fn (array $row) => ($row[$countColumn] ?? null) !== null);
+        $rows = array_filter($rows, fn (array $row) => collect(self::ROW_COUNTS)
+            ->contains(fn (string $column) => ($row[$column] ?? null) !== null && $row[$column] !== ''));
 
         foreach (array_chunk($targetIds, 500) as $chunk) {
             $model->newQuery()->whereIn('daily_target_id', $chunk)->delete();
@@ -110,13 +113,18 @@ class DailyTarget extends Model
             $inserts = [];
             foreach ($chunk as $targetId) {
                 foreach ($rows as $row) {
-                    $inserts[] = [
+                    $insert = [
                         'daily_target_id' => $targetId,
                         $key              => $row[$key],
-                        $countColumn      => $row[$countColumn],
                         'created_at'      => $now,
                         'updated_at'      => $now,
                     ];
+
+                    foreach (self::ROW_COUNTS as $column) {
+                        $insert[$column] = ($row[$column] ?? '') === '' ? null : $row[$column];
+                    }
+
+                    $inserts[] = $insert;
                 }
             }
 

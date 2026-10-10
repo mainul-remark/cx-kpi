@@ -3,9 +3,7 @@
 namespace App\Services\Attendance;
 
 use App\Models\AttendanceSession;
-use App\Models\Holiday;
 use App\Models\User;
-use App\Models\UserLeave;
 use App\Notifications\AttendanceCheckOutReminder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -14,10 +12,6 @@ use Illuminate\Validation\ValidationException;
 
 class AttendanceService
 {
-    public function __construct(private readonly OfficeLocator $locator)
-    {
-    }
-
     /** Today's date in the attendance timezone, the day a new session belongs to. */
     public function today(): string
     {
@@ -45,6 +39,59 @@ class AttendanceService
     public function currentSession(User $user): ?AttendanceSession
     {
         return $user->attendanceSessions()->open()->latest('checked_in_at')->first();
+    }
+
+    /**
+     * Whether the user has to file a daily report before using the system.
+     *
+     * That is so when they worked today, or checked in on a day and never checked out (even when the system closed it
+     * as forgotten), and no report exists on or after that day. Filing today's report clears it.
+     */
+    public function mustFileReport(User $user): bool
+    {
+        $days = $user->attendanceSessions()
+            ->where(fn ($query) => $query->whereNull('checked_out_at')->orWhere('work_date', $this->today()))
+            ->pluck('work_date')
+            ->map(fn ($date) => min(Carbon::parse($date)->toDateString(), today()->toDateString()));
+
+        if ($days->isEmpty()) {
+            return false;
+        }
+
+        $lastReport = DB::table('daily_reports')->where('user_id', $user->id)->max('report_date');
+
+        return $lastReport === null || $days->contains(fn (string $day) => $day > substr((string) $lastReport, 0, 10));
+    }
+
+    /**
+     * Give the sessions the user forgot to end a checkout of 11:59 pm on their own day, and keep them marked as
+     * "did not check out". Called when the user files a daily report. Returns how many were set.
+     *
+     * The session stays closed by the system, so the day still reads Incomplete and its hours stay unknown.
+     */
+    public function finalizeForgotten(User $user): int
+    {
+        $timezone = config('attendance.timezone');
+        $count = 0;
+
+        $user->attendanceSessions()
+            ->whereNull('checked_out_at')
+            ->whereNull('adjusted_by')
+            ->where('work_date', '<', $this->today())
+            ->get()
+            ->each(function (AttendanceSession $session) use ($timezone, &$count) {
+                $endOfDay = Carbon::parse($session->work_date->toDateString().' 23:59:00', $timezone)
+                    ->setTimezone(config('app.timezone'));
+
+                $session->forceFill([
+                    'checked_out_at' => $endOfDay,
+                    'close_reason' => AttendanceSession::REASON_AUTO,
+                    'auto_closed_at' => $session->auto_closed_at ?? now(),
+                ])->save();
+                $count++;
+            });
+
+        return $count;
     }
 
     /** Forgotten sessions the user has not been warned about yet. */
@@ -88,20 +135,9 @@ class AttendanceService
             $created = false;
 
             if (!$session) {
-                $where = $this->locator->resolve($geo, $ip);
-
-                if (config('attendance.require_office') && $where['place'] !== OfficeLocator::OFFICE) {
-                    throw ValidationException::withMessages([
-                        'location' => 'You can only check in from an office location.',
-                    ]);
-                }
-
                 $session = $user->attendanceSessions()->create([
                     'work_date' => $this->today(),
                     'checked_in_at' => now(),
-                    'late_minutes' => $this->lateMinutes($user, now()),
-                    'check_in_place' => $where['place'],
-                    'office_location_id' => $where['office_id'],
                     'check_in_lat' => $geo['lat'] ?? null,
                     'check_in_lng' => $geo['lng'] ?? null,
                     'check_in_accuracy' => $geo['accuracy'] ?? null,
@@ -151,77 +187,6 @@ class AttendanceService
         });
     }
 
-    /**
-     * The earlier days the user checked in on but filed no daily report for, oldest first.
-     *
-     * Today is left out: the report is written at the end of the day.
-     *
-     * @return array<int, string> dates as Y-m-d
-     */
-    public function owedReportDates(User $user): array
-    {
-        $dates = $user->attendanceSessions()
-            ->where('work_date', '<', $this->today())
-            ->orderBy('work_date')
-            ->pluck('work_date')
-            ->map(fn ($date) => Carbon::parse($date)->toDateString())
-            ->unique()
-            ->values();
-
-        if ($dates->isEmpty()) {
-            return [];
-        }
-
-        $reported = DB::table('daily_reports')
-            ->where('user_id', $user->id)
-            ->whereBetween('report_date', [$dates->first(), $dates->last().' 23:59:59'])
-            ->pluck('report_date')
-            ->map(fn ($date) => substr((string) $date, 0, 10))
-            ->all();
-
-        return $dates->reject(fn (string $date) => in_array($date, $reported, true))->values()->all();
-    }
-
-    /** The start and grace of the user's shift, the default one when none is assigned. */
-    public function shiftOf(User $user): array
-    {
-        $shift = $user->workShift;
-
-        return [
-            'start_time' => $shift?->start_time ?? config('attendance.default_shift.start_time'),
-            'grace_minutes' => $shift?->grace_minutes ?? config('attendance.default_shift.grace_minutes'),
-        ];
-    }
-
-    /**
-     * How many minutes after the shift start the first check in of a working day was, 0 when on time.
-     *
-     * Null when the check is not judged: a later session of the day, an off day or holiday, or a day of leave.
-     */
-    public function lateMinutes(User $user, Carbon $at): ?int
-    {
-        $timezone = config('attendance.timezone');
-        $local = $at->copy()->timezone($timezone);
-        $date = $local->toDateString();
-
-        $judged = Holiday::workingDays($date, $date) !== []
-            && !isset(UserLeave::portionsByUser($date, $date, [$user->id])[$user->id][$date])
-            && !$user->attendanceSessions()->whereDate('work_date', $date)->exists();
-
-        if (!$judged) {
-            return null;
-        }
-
-        $shift = $this->shiftOf($user);
-        $start = Carbon::parse($date.' '.$shift['start_time'], $timezone);
-
-        if ($local->lte($start->copy()->addMinutes((int) $shift['grace_minutes']))) {
-            return 0;
-        }
-
-        return (int) $start->diffInMinutes($local);
-    }
-
     /** Whether an end-of-day reminder is waiting for the user, who is still checked in. */
     public function hasPendingReminder(User $user): bool
     {
@@ -260,7 +225,7 @@ class AttendanceService
     }
 
     /**
-     * The check-in sessions of a range, newest first, ready for the attendance page.
+     * The check-in days of a range, newest first, ready for the attendance page.
      *
      * A manager also gets the places and addresses of the check; the user only their own times.
      *
@@ -273,7 +238,7 @@ class AttendanceService
 
         $sessions = AttendanceSession::query()
             ->with('user:id,name')
-            ->whereBetween('work_date', [$from, $to.' 23:59:59'])
+            ->whereBetween('work_date', [$from, $to])
             ->when($userId, fn ($query) => $query->where('user_id', $userId))
             ->orderByDesc('work_date')
             ->orderByDesc('checked_in_at')
@@ -282,38 +247,65 @@ class AttendanceService
 
         $truncated = $sessions->count() > $limit;
 
-        $rows = $sessions->take($limit)->map(function (AttendanceSession $session) use ($forManager, $timezone) {
-            $in = $session->checked_in_at->copy()->timezone($timezone);
-            $out = $session->checked_out_at?->copy()->timezone($timezone);
+        // one row per user and day: the first check in, the last check out and the worked time in between
+        $rows = $sessions->take($limit)
+            ->groupBy(fn (AttendanceSession $session) => $session->user_id.'|'.$session->work_date->toDateString())
+            ->map(function ($day) use ($forManager, $timezone) {
+                $day = $day->sortBy('checked_in_at')->values();
+                $first = $day->first();
+                $last = $day->last();
 
-            $row = [
-                'id' => $session->id,
-                'user_id' => $session->user_id,
-                'name' => $session->user?->name,
-                'work_date' => $session->work_date->toDateString(),
-                'checked_in' => $in->format('h:i A'),
-                'checked_out' => $out?->format('h:i A'),
-                // a closed session shows how long it ran; an incomplete one has no known end
-                'minutes' => $out ? (int) $in->diffInMinutes($out) : null,
-                'status' => $this->status($session),
-                'late_minutes' => $session->late_minutes,
-                'place' => $session->check_in_place,
-                'note' => $session->adjustment_note,
-            ];
+                $in = $first->checked_in_at->copy()->timezone($timezone);
+                $out = $last->checked_out_at?->copy()->timezone($timezone);
+                $lastIn = $last->checked_in_at->copy()->timezone($timezone);
 
-            if ($forManager) {
-                $row += [
-                    'in_location' => $this->location($session->check_in_lat, $session->check_in_lng),
-                    'out_location' => $this->location($session->check_out_lat, $session->check_out_lng),
-                    'checked_in_input' => $in->format('Y-m-d\TH:i'),
-                    'checked_out_input' => $out?->format('Y-m-d\TH:i'),
+                // a forgotten session has no known end, whatever end of day was filled in for it
+                $closed = $day->filter(fn (AttendanceSession $session) => $session->checked_out_at !== null && !$session->isAutoClosed());
+
+                $row = [
+                    // the session a manager corrects: the one that ends the day
+                    'id' => $last->id,
+                    'user_id' => $first->user_id,
+                    'name' => $first->user?->name,
+                    'work_date' => $first->work_date->toDateString(),
+                    'checked_in' => $in->format('h:i A'),
+                    'checked_out' => $out?->format('h:i A'),
+                    // worked time of the ended sessions; an incomplete one has no known end
+                    'minutes' => $closed->isEmpty() ? null : (int) $closed->sum(
+                        fn (AttendanceSession $session) => $session->checked_in_at->diffInMinutes($session->checked_out_at)
+                    ),
+                    'sessions' => $day->count(),
+                    'status' => $this->dayStatus($day),
+                    'note' => $day->pluck('adjustment_note')->filter()->last(),
                 ];
-            }
 
-            return $row;
-        })->values()->all();
+                if ($forManager) {
+                    $row += [
+                        'in_location' => $this->location($first->check_in_lat, $first->check_in_lng),
+                        'out_location' => $this->location($last->check_out_lat, $last->check_out_lng),
+                        'checked_in_input' => $lastIn->format('Y-m-d\TH:i'),
+                        'checked_out_input' => $out?->format('Y-m-d\TH:i'),
+                    ];
+                }
+
+                return $row;
+            })->values()->all();
 
         return ['rows' => $rows, 'truncated' => $truncated];
+    }
+
+    /** The status of a day: still open wins, then a forgotten check out, then a manager correction. */
+    private function dayStatus($day): string
+    {
+        $statuses = $day->map(fn (AttendanceSession $session) => $this->status($session));
+
+        foreach (['open', 'incomplete', 'adjusted'] as $status) {
+            if ($statuses->contains($status)) {
+                return $status;
+            }
+        }
+
+        return 'completed';
     }
 
     /** Field users who are checked in right now. */
@@ -340,7 +332,8 @@ class AttendanceService
      */
     public function adjust(AttendanceSession $session, User $manager, Carbon $checkedOutAt, string $note): AttendanceSession
     {
-        if ($checkedOutAt->lt($session->checked_in_at) || $checkedOutAt->isFuture()) {
+        // the form picks a minute, the check in keeps its seconds: compare on the minute
+        if ($checkedOutAt->lt($session->checked_in_at->copy()->startOfMinute()) || $checkedOutAt->isFuture()) {
             throw ValidationException::withMessages([
                 'checked_out_at' => 'The check out must be after the check in, and not in the future.',
             ]);

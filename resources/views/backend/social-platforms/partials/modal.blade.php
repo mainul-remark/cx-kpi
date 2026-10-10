@@ -26,6 +26,22 @@
                         <div class="invalid-feedback" data-error-for="notes"></div>
                     </div>
 
+                    <div class="mb-3">
+                        <label class="form-label d-block">Tracking</label>
+                        <div class="form-check form-check-inline">
+                            <input type="checkbox" name="has_outbound_calls" id="social_platform_has_outbound_calls" value="1" class="form-check-input" checked>
+                            <label class="form-check-label" for="social_platform_has_outbound_calls">Outbound Calls</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input type="checkbox" name="has_comments" id="social_platform_has_comments" value="1" class="form-check-input" checked>
+                            <label class="form-check-label" for="social_platform_has_comments">Comments</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input type="checkbox" name="has_message_replies" id="social_platform_has_message_replies" value="1" class="form-check-input" checked>
+                            <label class="form-check-label" for="social_platform_has_message_replies">Message Replies</label>
+                        </div>
+                    </div>
+
                     <div class="form-check form-switch">
                         <input type="checkbox" name="active" id="social_platform_active" value="1" class="form-check-input" role="switch" checked>
                         <label class="form-check-label" for="social_platform_active">Active</label>

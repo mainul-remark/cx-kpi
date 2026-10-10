@@ -2,9 +2,8 @@
 @php
     $pageTitle = $target ? 'Edit Daily Target' : 'Set Daily Target';
     $totals = [
-        'outbound_calls' => 'Outbound Calls',
-        'inbound_calls' => 'Inbound Calls',
-        'message_replies' => 'Message Replies',
+        'outbound_calls' => ['label' => 'Outbound Calls', 'required' => true],
+        'inbound_calls' => ['label' => 'Inbound Calls (approximate)', 'required' => false],
     ];
 @endphp
 @section('title', $pageTitle)
@@ -65,13 +64,6 @@
                                 </div>
                             </div>
 
-                            <div class="mb-3">
-                                <label class="form-label d-block">Quick Range</label>
-                                @foreach($presets as $preset)
-                                    <button type="button" class="btn btn-outline-primary btn-sm me-1 mb-1 target-preset" data-from="{{ $preset['from'] }}" data-to="{{ $preset['to'] }}">{{ $preset['label'] }}</button>
-                                @endforeach
-                            </div>
-
                             <div class="row">
                                 <div class="col-sm-6 col-md-3">
                                     <label class="form-label" for="from">
@@ -104,7 +96,11 @@
                             </h5>
                         </div>
                         <div class="card-body">
-                            <p class="text-muted">Leave an activity empty to set no target for it.</p>
+                            <p class="text-muted">
+                                The outbound call target is required, the KPI is worked out from it: the outbound and order processing calls
+                                reported are added up and compared with it. Every other target is approximate and optional, it is shown for
+                                reference and does not change the KPI. Leave it empty to set none.
+                            </p>
                             <div class="table-responsive">
                                 <table class="table table-bordered align-middle w-100">
                                     <thead>
@@ -114,11 +110,14 @@
                                     </tr>
                                     </thead>
                                     <tbody>
-                                    @foreach($totals as $field => $label)
+                                    @foreach($totals as $field => $config)
                                         <tr>
-                                            <td><label class="mb-0" for="{{ $field }}">{{ $label }}</label></td>
                                             <td>
-                                                <input type="number" name="{{ $field }}" id="{{ $field }}" class="form-control" min="0" step="1" placeholder="No target" value="{{ $target?->{$field} }}">
+                                                <label class="mb-0" for="{{ $field }}">{{ $config['label'] }}</label>
+                                                @if($config['required'])<span class="text-danger">*</span>@endif
+                                            </td>
+                                            <td>
+                                                <input type="number" name="{{ $field }}" id="{{ $field }}" class="form-control" min="0" step="1" placeholder="{{ $config['required'] ? 'Required' : 'No target' }}" value="{{ $target?->{$field} }}">
                                                 <div class="invalid-feedback" data-error-for="{{ $field }}"></div>
                                             </td>
                                         </tr>
@@ -130,47 +129,39 @@
                     </div>
                 </div>
 
-                <div class="col-xl-6">
+                <div class="col-xl-12">
                     <div class="card">
-                        <div class="card-header d-flex justify-content-between align-items-center border-bottom">
+                        <div class="card-header border-bottom">
                             <h5 class="card-title mb-0">
-                                <i class="mdi mdi-comment-multiple-outline me-1"></i> Comment Replies by Social Platform
+                                <i class="mdi mdi-phone me-1"></i> Approximate Targets by Project
                             </h5>
-                            <span class="badge text-bg-primary">Total: <span data-sum-of="platform-count">0</span></span>
-                        </div>
-                        <div class="card-body">
-                            @include('backend.daily-targets.partials.rows', [
-                                'rows' => $platformRows,
-                                'group' => 'platforms',
-                                'idField' => 'social_platform_id',
-                                'countField' => 'total_replies',
-                                'countClass' => 'platform-count',
-                                'nameHeading' => 'Social Platform',
-                                'countHeading' => 'Comment Replies',
-                                'emptyText' => 'No active social platform found.',
-                            ])
-                        </div>
-                    </div>
-                </div>
-
-                <div class="col-xl-6">
-                    <div class="card">
-                        <div class="card-header d-flex justify-content-between align-items-center border-bottom">
-                            <h5 class="card-title mb-0">
-                                <i class="mdi mdi-phone-outline me-1"></i> Calls by Project
-                            </h5>
-                            <span class="badge text-bg-primary">Total: <span data-sum-of="project-count">0</span></span>
                         </div>
                         <div class="card-body">
                             @include('backend.daily-targets.partials.rows', [
                                 'rows' => $projectRows,
                                 'group' => 'projects',
                                 'idField' => 'project_id',
-                                'countField' => 'total_calls',
-                                'countClass' => 'project-count',
                                 'nameHeading' => 'Project',
-                                'countHeading' => 'Total Calls',
-                                'emptyText' => 'No active project found.',
+                                'emptyText' => 'No active project takes calls, comments or messages.',
+                            ])
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-xl-12">
+                    <div class="card">
+                        <div class="card-header border-bottom">
+                            <h5 class="card-title mb-0">
+                                <i class="mdi mdi-comment-multiple-outline me-1"></i> Approximate Targets by Social Platform
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            @include('backend.daily-targets.partials.rows', [
+                                'rows' => $platformRows,
+                                'group' => 'platforms',
+                                'idField' => 'social_platform_id',
+                                'nameHeading' => 'Social Platform',
+                                'emptyText' => 'No active social platform takes calls, comments or messages.',
                             ])
                         </div>
                     </div>

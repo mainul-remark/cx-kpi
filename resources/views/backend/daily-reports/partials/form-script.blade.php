@@ -1,7 +1,6 @@
 <script>
     $(function () {
         const reportUrl = @json(route('daily-reports.index'));
-        const createUrl = @json(route('daily-reports.create'));
         const reportId = @json($isEdit ? $report->id : null);
         const isNewReport = @json(!$report);
         const can = {
@@ -15,6 +14,7 @@
         function clearErrors() {
             $form.find('.is-invalid').removeClass('is-invalid');
             $form.find('[data-error-for]').text('').removeClass('d-block');
+            $form.find('[data-tab-errors]').text('').addClass('d-none');
         }
 
         // "projects.0.total_calls" from the validator is the input named "projects[0][total_calls]"
@@ -24,11 +24,32 @@
         }
 
         function showErrors(errors) {
+            const perTab = {};
+            let firstTab = null;
+
             $.each(errors, function (field, messages) {
-                $form.find('[name="' + inputName(field) + '"]').addClass('is-invalid');
+                const $input = $form.find('[name="' + inputName(field) + '"]').addClass('is-invalid');
                 // shown explicitly, as the error of a hidden input has no invalid sibling to reveal it
                 $form.find('[data-error-for="' + field + '"]').text(messages[0]).addClass('d-block');
+
+                // tell which tab holds the error, as the other one is hidden
+                const pane = $input.first().closest('.tab-pane').attr('id');
+                if (pane) {
+                    perTab[pane] = (perTab[pane] || 0) + 1;
+                    firstTab = firstTab || pane;
+                }
             });
+
+            $.each(perTab, function (pane, total) {
+                $form.find('[data-tab-errors="' + pane + '"]').text(total).removeClass('d-none');
+            });
+
+            // open the first tab with an error, unless the open one already has one
+            const open = $form.find('.tab-pane.active').attr('id');
+            if (firstTab && !perTab[open]) {
+                bootstrap.Tab.getOrCreateInstance(document.querySelector('[data-bs-target="#' + firstTab + '"]')).show();
+            }
+
             $form.find('.is-invalid:visible').first().trigger('focus');
         }
 
@@ -43,20 +64,11 @@
         }
 
         updateSums();
-        $form.on('input', '.platform-count, .project-count', updateSums);
+        $form.on('input', 'input[type="number"]', updateSums);
 
         $form.on('input change', '.is-invalid', function () {
             $(this).removeClass('is-invalid');
         });
-
-        // a new report follows the chosen day, so load whatever was already saved for it
-        if (!reportId) {
-            $('#report_date').on('change', function () {
-                if (this.value) {
-                    window.location.href = createUrl + '?date=' + encodeURIComponent(this.value);
-                }
-            });
-        }
 
         $form.on('submit', function (e) {
             e.preventDefault();

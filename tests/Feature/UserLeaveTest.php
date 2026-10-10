@@ -182,10 +182,13 @@ class UserLeaveTest extends TestCase
 
         $this->actingAs($user);
 
+        // the system files the report under the day it is sent on, which is the day of the full leave here
         $this->postJson('/daily-reports', $this->reportPayload('2026-10-06'))
             ->assertStatus(422)
-            ->assertJsonValidationErrors(['report_date']);
+            ->assertJsonValidationErrors(['outbound_calls']);
 
+        // a half day of leave is still worked
+        Carbon::setTestNow('2026-10-05 10:00:00');
         $this->postJson('/daily-reports', $this->reportPayload('2026-10-05'))->assertCreated();
 
         $this->assertDatabaseCount('daily_reports', 1);
@@ -225,7 +228,7 @@ class UserLeaveTest extends TestCase
             'report_date' => $date,
             'outbound_calls' => 40,
             'inbound_calls' => 15,
-            'message_replies' => 22,
+            'order_processing' => 0,
         ];
     }
 }

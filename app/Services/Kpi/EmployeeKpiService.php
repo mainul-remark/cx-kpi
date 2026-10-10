@@ -18,6 +18,10 @@ use Illuminate\Support\Facades\DB;
  * so a busy day weighs more than a light one. Only the activities with a target on a day count,
  * and a day of official leave, an off day or a day without a target counts for nothing either way.
  * Each activity counts by its weight from config/kpi.php, the totals shown stay plain counts.
+ *
+ * The outbound calls are the scored activity: the outbound and order processing calls reported are added up and
+ * compared with the outbound call target. Inbound calls, comments and message replies have approximate targets
+ * only, they are listed with their figures but weigh nothing in the score.
  */
 class EmployeeKpiService
 {
@@ -82,7 +86,7 @@ class EmployeeKpiService
             'average_score' => count($scores) > 0 ? round(array_sum($scores) / count($scores), 1) : null,
             'absent' => array_sum(array_column($rows, 'absent')),
             'leave' => array_sum(array_column($rows, 'leave')),
-            'late_days' => array_sum(array_column($rows, 'late_days')),
+            'checked_in_days' => array_sum(array_column($rows, 'checked_in_days')),
             'incomplete_days' => array_sum(array_column($rows, 'incomplete_days')),
         ];
     }
@@ -144,22 +148,39 @@ class EmployeeKpiService
                     if (!empty($goals)) {
                         $day['target'] = $day['actual'] = 0;
                         $dayTarget = $dayActual = 0.0;
+                        $scored = false;
 
                         foreach ($goals as $activity => $goal) {
                             // half a day of leave halves what is asked of the day
                             $goal = $half ? (int) ceil($goal / 2) : $goal;
                             $count = $done[$activity] ?? 0;
                             $metric = self::metricOf($activity);
+                            $weight = $weights[$metric] ?? 1.0;
 
-                            $breakdown[$metric]['target'] += $goal;
-                            $breakdown[$metric]['actual'] += $count;
+                            if (isset($breakdown[$metric])) {
+                                $breakdown[$metric]['target'] += $goal;
+                                $breakdown[$metric]['actual'] += $count;
+                            }
                             $activities[$activity] ??= ['metric' => $metric, 'target' => 0, 'actual' => 0];
                             $activities[$activity]['target'] += $goal;
                             $activities[$activity]['actual'] += $count;
+
+                            // an approximate target is shown, but nothing is asked of the day for it
+                            if ($weight <= 0) {
+                                continue;
+                            }
+
+                            $scored = true;
+
                             $day['target'] += $goal;
                             $day['actual'] += $count;
-                            $dayTarget += $goal * ($weights[$metric] ?? 1.0);
-                            $dayActual += $count * ($weights[$metric] ?? 1.0);
+                            $dayTarget += $goal * $weight;
+                            $dayActual += $count * $weight;
+                        }
+
+                        // only approximate targets that day: nothing was asked of it
+                        if (!$scored) {
+                            $day['target'] = $day['actual'] = null;
                         }
 
                         $day['pct'] = self::pct($dayActual, $dayTarget);
@@ -167,7 +188,7 @@ class EmployeeKpiService
                         $actualTotal += $day['actual'];
                         $weightedTarget += $dayTarget;
                         $weightedActual += $dayActual;
-                        $targetDays++;
+                        $targetDays += $scored ? 1 : 0;
                     }
                 }
 
@@ -192,7 +213,6 @@ class EmployeeKpiService
                 'leave' => $leave,
                 // from check ins; they only inform, the score above is not changed by them
                 'checked_in_days' => $punctuality[$user->id]['checked_in'] ?? 0,
-                'late_days' => $punctuality[$user->id]['late'] ?? 0,
                 'incomplete_days' => $punctuality[$user->id]['incomplete'] ?? 0,
                 'activities' => $activities,
                 'breakdown' => collect($breakdown)
@@ -216,12 +236,12 @@ class EmployeeKpiService
     }
 
     /**
-     * How many days each user checked in on, was late on, and forgot to check out of.
+     * How many days each user checked in on, and forgot to check out of.
      *
      * Only days with a check in are judged, so a user who never checks in is not marked down for it.
      *
      * @param  list<int>  $userIds
-     * @return array<int, array{checked_in: int, late: int, incomplete: int}>
+     * @return array<int, array{checked_in: int, incomplete: int}>
      */
     private function punctuality(string $from, string $to, array $userIds): array
     {
@@ -229,21 +249,18 @@ class EmployeeKpiService
         $seen = [];
 
         AttendanceSession::query()
-            ->whereBetween('work_date', [$from, $to.' 23:59:59'])
+            ->whereBetween('work_date', [$from, $to])
             ->whereIn('user_id', $userIds)
             ->orderBy('checked_in_at')
-            ->get(['user_id', 'work_date', 'late_minutes', 'close_reason'])
+            ->get(['user_id', 'work_date', 'close_reason'])
             ->each(function (AttendanceSession $session) use (&$figures, &$seen) {
                 $date = $session->work_date->toDateString();
-                $figures[$session->user_id] ??= ['checked_in' => 0, 'late' => 0, 'incomplete' => 0];
+                $figures[$session->user_id] ??= ['checked_in' => 0, 'incomplete' => 0];
 
                 // a day counts once, however many sessions it holds
                 if (!isset($seen[$session->user_id][$date])) {
                     $seen[$session->user_id][$date] = true;
                     $figures[$session->user_id]['checked_in']++;
-                }
-                if ($session->late_minutes > 0) {
-                    $figures[$session->user_id]['late']++;
                 }
                 if ($session->close_reason === AttendanceSession::REASON_AUTO) {
                     $figures[$session->user_id]['incomplete']++;
@@ -291,33 +308,49 @@ class EmployeeKpiService
             ->whereBetween($parent.'.'.$config['date'], [$from, $to.' 23:59:59'])
             ->whereIn($parent.'.user_id', $userIds);
 
-        $main = $scoped()->orderBy('id')->get(['user_id', $config['date'].' as day', 'outbound_calls', 'inbound_calls', 'message_replies']);
+        // order processing is reported next to the outbound calls and counts with them, a target has none
+        $outbound = $source === 'report' ? 'outbound_calls + order_processing' : 'outbound_calls';
+
+        $main = $scoped()
+            ->orderBy('id')
+            ->selectRaw('user_id, '.$config['date'].' as day, ('.$outbound.') as outbound_calls, inbound_calls')
+            ->get();
 
         foreach ($main as $row) {
             $date = substr((string) $row->day, 0, 10);
             // a report is kept even when empty, as it still shows the user worked that day
             $figures[$row->user_id][$date] ??= [];
 
-            foreach (['outbound_calls', 'inbound_calls', 'message_replies'] as $activity) {
+            foreach (['outbound_calls', 'inbound_calls'] as $activity) {
                 if ($row->{$activity} !== null) {
                     $figures[$row->user_id][$date][$activity] = (int) $row->{$activity};
                 }
             }
         }
 
+        // each project and each platform has its own inbound calls, comments and message replies
         $children = [
-            'platform' => [$config['platforms'], 'social_platform_id', 'total_replies'],
-            'project' => [$config['projects'], 'project_id', 'total_calls'],
+            'platform' => [$config['platforms'], 'social_platform_id'],
+            'project' => [$config['projects'], 'project_id'],
         ];
+        $counts = ['inbound_calls', 'comments', 'message_replies'];
 
-        foreach ($children as $prefix => [$table, $foreignKey, $column]) {
+        foreach ($children as $prefix => [$table, $foreignKey]) {
             $rows = $scoped()
                 ->join($table, $table.'.'.$config['key'], '=', $parent.'.id')
                 ->orderBy($table.'.id')
-                ->get([$parent.'.user_id', $parent.'.'.$config['date'].' as day', $table.'.'.$foreignKey.' as item', $table.'.'.$column.' as total']);
+                ->get(array_merge(
+                    [$parent.'.user_id', $parent.'.'.$config['date'].' as day', $table.'.'.$foreignKey.' as item'],
+                    array_map(fn (string $column) => $table.'.'.$column, $counts)
+                ));
 
             foreach ($rows as $row) {
-                $figures[$row->user_id][substr((string) $row->day, 0, 10)][$prefix.':'.$row->item] = (int) $row->total;
+                foreach ($counts as $column) {
+                    // an empty count is a target that was not set
+                    if ($row->{$column} !== null) {
+                        $figures[$row->user_id][substr((string) $row->day, 0, 10)][$prefix.':'.$row->item.':'.$column] = (int) $row->{$column};
+                    }
+                }
             }
         }
 
@@ -325,15 +358,18 @@ class EmployeeKpiService
     }
 
     /**
-     * The dashboard metric an activity belongs to: a platform is comment replies, a project is project calls.
+     * The metric an activity belongs to: a project or platform activity ends in its count, which is also the metric,
+     * except for inbound calls, which would add up with the inbound calls of the whole report.
      */
     private static function metricOf(string $activity): string
     {
-        return match (true) {
-            str_starts_with($activity, 'platform:') => 'comment_replies',
-            str_starts_with($activity, 'project:') => 'project_calls',
-            default => $activity,
-        };
+        if (str_starts_with($activity, 'platform:') || str_starts_with($activity, 'project:')) {
+            $count = substr($activity, strrpos($activity, ':') + 1);
+
+            return $count === 'inbound_calls' ? 'entity_inbound_calls' : $count;
+        }
+
+        return $activity;
     }
 
     private static function pct(int|float $actual, int|float $target): ?float

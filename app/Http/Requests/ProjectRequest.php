@@ -21,9 +21,12 @@ class ProjectRequest extends FormRequest
      */
     protected function prepareForValidation(): void
     {
-        // An unchecked switch is not submitted at all, so normalise it to a boolean.
+        // An unchecked switch/checkbox is not submitted at all, so normalise it to a boolean.
         $this->merge([
-            'active' => $this->boolean('active'),
+            'active'              => $this->boolean('active'),
+            'has_outbound_calls'  => $this->boolean('has_outbound_calls'),
+            'has_comments'        => $this->boolean('has_comments'),
+            'has_message_replies' => $this->boolean('has_message_replies'),
         ]);
     }
 
@@ -43,6 +46,9 @@ class ProjectRequest extends FormRequest
             ],
             'notes'  => ['nullable', 'string', 'max:5000'],
             'active' => ['required', 'boolean'],
+            'has_outbound_calls'  => ['required', 'boolean'],
+            'has_comments'        => ['required', 'boolean'],
+            'has_message_replies' => ['required', 'boolean'],
         ];
     }
 

@@ -27,9 +27,6 @@ class AttendanceSession extends Model
         'check_out_ip',
         'check_in_device',
         'check_out_device',
-        'late_minutes',
-        'check_in_place',
-        'office_location_id',
         'close_reason',
         'auto_closed_at',
         'acknowledged_at',
@@ -40,7 +37,7 @@ class AttendanceSession extends Model
     protected function casts(): array
     {
         return [
-            'work_date' => 'date',
+            'work_date' => 'date:Y-m-d',
             'checked_in_at' => 'datetime',
             'checked_out_at' => 'datetime',
             'auto_closed_at' => 'datetime',
@@ -66,7 +63,7 @@ class AttendanceSession extends Model
 
     public function scopeForDate(Builder $query, string $date): Builder
     {
-        return $query->whereDate('work_date', $date);
+        return $query->where('work_date', $date);
     }
 
     /** Closed by the system because the user never checked out. */

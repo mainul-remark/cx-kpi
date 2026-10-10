@@ -12,7 +12,6 @@ use App\Http\Controllers\DailyTargetController;
 use App\Http\Controllers\HolidayController;
 use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\AttendanceCheckController;
-use App\Http\Controllers\AttendanceSettingsController;
 use App\Http\Controllers\UserLeaveController;
 use App\Http\Controllers\EmployeeKpiController;
 use App\Http\Controllers\LeaveRequestController;
@@ -40,7 +39,7 @@ Route::middleware([
     'auth:sanctum',
     config('jetstream.auth_session'),
     'verified',
-    'report.owed',
+    'report.required',
     'resource.maker',
     'auth.acl',
 ])->group(function () {
@@ -72,16 +71,6 @@ Route::middleware([
     Route::post('leaves/{leave}/reject', [UserLeaveController::class, 'reject'])->name('leaves.reject');
     Route::resource('my-leaves', LeaveRequestController::class)->only(['index', 'store', 'destroy'])->parameters(['my-leaves' => 'leave']);
     Route::get('attendance', [AttendanceController::class, 'index'])->name('attendance.index');
-    Route::prefix('attendance-settings')->name('attendance-settings.')->group(function () {
-        Route::get('/', [AttendanceSettingsController::class, 'index'])->name('index');
-        Route::post('shifts', [AttendanceSettingsController::class, 'storeShift'])->name('shifts.store');
-        Route::put('shifts/{shift}', [AttendanceSettingsController::class, 'updateShift'])->name('shifts.update');
-        Route::delete('shifts/{shift}', [AttendanceSettingsController::class, 'destroyShift'])->name('shifts.destroy');
-        Route::post('shifts/{shift}/users', [AttendanceSettingsController::class, 'assignShift'])->name('shifts.assign');
-        Route::post('offices', [AttendanceSettingsController::class, 'storeOffice'])->name('offices.store');
-        Route::put('offices/{office}', [AttendanceSettingsController::class, 'updateOffice'])->name('offices.update');
-        Route::delete('offices/{office}', [AttendanceSettingsController::class, 'destroyOffice'])->name('offices.destroy');
-    });
     Route::post('attendance/sessions/{session}/adjust', [AttendanceController::class, 'adjust'])->name('attendance.sessions.adjust');
     Route::get('kpi', [EmployeeKpiController::class, 'index'])->name('kpi.index');
     // registered before the user route so "export" and "monthly" are not read as a user id

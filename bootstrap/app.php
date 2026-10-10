@@ -16,7 +16,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'auth.acl'          => \Uzzal\Acl\Middleware\AuthenticateWithAcl::class,
             'resource.maker'    => \Uzzal\Acl\Middleware\ResourceMaker::class,
             'password.expiry'   => \App\Http\Middleware\PasswordExpiryCheck::class,
-            'report.owed'       => \App\Http\Middleware\RequireOwedDailyReport::class,
+            'report.required'   => \App\Http\Middleware\RequireDailyReport::class,
         ]);
     })
     ->withCommands([

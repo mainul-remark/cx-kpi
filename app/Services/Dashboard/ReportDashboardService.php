@@ -27,9 +27,8 @@ class ReportDashboardService
     public const METRICS = [
         'outbound_calls'  => 'Outbound Calls',
         'inbound_calls'   => 'Inbound Calls',
+        'comments'        => 'Comments',
         'message_replies' => 'Message Replies',
-        'comment_replies' => 'Comment Replies',
-        'project_calls'   => 'Project Calls',
     ];
 
     public const PRESETS = ['today', 'week', '15days', 'month', 'custom'];
@@ -125,8 +124,8 @@ class ReportDashboardService
             'kpis' => $kpis,
             'submissions' => $this->submissions($from, $to, $userId, (int) ($actual['entries'] ?? 0)),
             'trend' => $this->trend($from, $to, $userId),
-            'platforms' => $this->breakdown('platforms', 'social_platforms', 'social_platform_id', 'total_replies', $from, $to, $userId, $withTargets),
-            'projects' => $this->breakdown('projects', 'projects', 'project_id', 'total_calls', $from, $to, $userId, $withTargets),
+            'platforms' => $this->breakdown('platforms', 'social_platforms', 'social_platform_id', $from, $to, $userId, $withTargets),
+            'projects' => $this->breakdown('projects', 'projects', 'project_id', $from, $to, $userId, $withTargets),
             'users' => $withUsers ? $this->users($from, $to, $userId, $withTargets) : null,
             'attendance' => $withUsers ? $this->attendance($from, $to, $userId) : null,
         ];
@@ -144,7 +143,7 @@ class ReportDashboardService
         $today = today()->toDateString();
 
         $holidays = Holiday::query()
-            ->whereBetween('holiday_date', [$from, $to.' 23:59:59'])
+            ->whereBetween('holiday_date', [$from, $to])
             ->get(['holiday_date', 'title'])
             ->mapWithKeys(fn (Holiday $holiday) => [$holiday->holiday_date->toDateString() => $holiday->title]);
 
@@ -172,11 +171,10 @@ class ReportDashboardService
                 $reported[$report->user_id][substr((string) $report->report_date, 0, 10)] = true;
             });
 
-        // A user is present on a day they reported or checked in on, so either one is enough. A check-in without
-        // a report is made up for by the daily report the user is made to file at their next login.
+        // A user is present on a day they reported or checked in on, so either one is enough.
         $checkedIn = $incomplete = [];
         AttendanceSession::query()
-            ->whereBetween('work_date', [$from, $to.' 23:59:59'])
+            ->whereBetween('work_date', [$from, $to])
             ->whereIn('user_id', $users->modelKeys())
             ->get(['user_id', 'work_date', 'close_reason'])
             ->each(function (AttendanceSession $session) use (&$reported, &$checkedIn, &$incomplete) {
@@ -242,7 +240,7 @@ class ReportDashboardService
 
         // a plain range on the date column keeps its index usable, the time part covers dates stored with one
         return DB::table($config['table'])
-            ->whereBetween($config['table'].'.'.$config['date'], [$from, $to.' 23:59:59'])
+            ->whereBetween($config['table'].'.'.$config['date'], [$from, $to])
             ->when($userId, fn (Builder $query) => $query->where($config['table'].'.user_id', $userId));
     }
 
@@ -261,8 +259,11 @@ class ReportDashboardService
 
         $rows = collect();
 
+        // order processing is reported next to the outbound calls and counts with them, a target has none
+        $outbound = $source === 'report' ? 'SUM(outbound_calls + order_processing)' : 'SUM(outbound_calls)';
+
         $main = $this->scoped($source, $from, $to, $userId)
-            ->selectRaw('SUM(outbound_calls) as outbound_calls, SUM(inbound_calls) as inbound_calls, SUM(message_replies) as message_replies, COUNT(*) as entries')
+            ->selectRaw($outbound.' as outbound_calls, SUM(inbound_calls) as inbound_calls, COUNT(*) as entries')
             ->when($group, fn (Builder $query) => $query->addSelect($group.' as group_key')->groupBy($group))
             ->get();
 
@@ -270,30 +271,29 @@ class ReportDashboardService
             $rows->put($groupKey($row), [
                 'outbound_calls' => $row->outbound_calls,
                 'inbound_calls' => $row->inbound_calls,
-                'message_replies' => $row->message_replies,
-                'comment_replies' => null,
-                'project_calls' => null,
+                'comments' => null,
+                'message_replies' => null,
                 'entries' => (int) $row->entries,
             ]);
         }
 
-        $children = [
-            'comment_replies' => [$config['platforms'], 'total_replies'],
-            'project_calls' => [$config['projects'], 'total_calls'],
-        ];
+        // comments and message replies are only entered per project and per platform, so each is both tables added
+        foreach (['comments', 'message_replies'] as $metric) {
+            foreach ([$config['platforms'], $config['projects']] as $table) {
+                $sums = $this->scoped($source, $from, $to, $userId)
+                    ->join($table, $table.'.'.$config['key'], '=', $config['table'].'.id')
+                    ->selectRaw('SUM('.$table.'.'.$metric.') as total')
+                    ->when($group, fn (Builder $query) => $query->addSelect($group.' as group_key')->groupBy($group))
+                    ->get();
 
-        foreach ($children as $metric => [$table, $column]) {
-            $sums = $this->scoped($source, $from, $to, $userId)
-                ->join($table, $table.'.'.$config['key'], '=', $config['table'].'.id')
-                ->selectRaw('SUM('.$table.'.'.$column.') as total')
-                ->when($group, fn (Builder $query) => $query->addSelect($group.' as group_key')->groupBy($group))
-                ->get();
+                foreach ($sums as $row) {
+                    $key = $groupKey($row);
 
-            foreach ($sums as $row) {
-                $key = $groupKey($row);
-
-                if ($rows->has($key)) {
-                    $rows->put($key, array_merge($rows->get($key), [$metric => $row->total]));
+                    if ($rows->has($key) && $row->total !== null) {
+                        $current = $rows->get($key);
+                        $current[$metric] = (int) $current[$metric] + (int) $row->total;
+                        $rows->put($key, $current);
+                    }
                 }
             }
         }
@@ -353,18 +353,20 @@ class ReportDashboardService
     }
 
     /**
-     * The reported figure per platform or per project, next to its target when targets are shown.
+     * The reported figure per platform or per project, next to its approximate target when targets are shown.
+     *
+     * A figure is the inbound calls, comments and message replies of the row added up.
      */
-    private function breakdown(string $child, string $nameTable, string $foreignKey, string $column, string $from, string $to, ?int $userId, bool $withTargets): array
+    private function breakdown(string $child, string $nameTable, string $foreignKey, string $from, string $to, ?int $userId, bool $withTargets): array
     {
-        $sum = function (string $source) use ($child, $foreignKey, $column, $from, $to, $userId) {
+        $sum = function (string $source) use ($child, $foreignKey, $from, $to, $userId) {
             $config = self::SOURCES[$source];
             $table = $config[$child];
 
             return $this->scoped($source, $from, $to, $userId)
                 ->join($table, $table.'.'.$config['key'], '=', $config['table'].'.id')
                 ->groupBy($table.'.'.$foreignKey)
-                ->selectRaw($table.'.'.$foreignKey.' as id, SUM('.$table.'.'.$column.') as total')
+                ->selectRaw($table.'.'.$foreignKey.' as id, SUM(COALESCE('.$table.'.inbound_calls, 0) + COALESCE('.$table.'.comments, 0) + COALESCE('.$table.'.message_replies, 0)) as total')
                 ->pluck('total', 'id');
         };
 

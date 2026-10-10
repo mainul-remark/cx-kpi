@@ -8,7 +8,6 @@ use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Carbon;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\Validator;
 
 class DailyTargetRequest extends FormRequest
 {
@@ -32,7 +31,7 @@ class DailyTargetRequest extends FormRequest
      */
     public function rules(): array
     {
-        // an empty count means no target for that activity
+        // an empty count means no target for that activity, only the outbound call target is required
         $count = ['nullable', 'integer', 'min:0', 'max:4294967295'];
 
         return [
@@ -54,39 +53,22 @@ class DailyTargetRequest extends FormRequest
                 },
             ],
 
-            'outbound_calls'  => $count,
-            'inbound_calls'   => $count,
-            'message_replies' => $count,
+            // the one mandatory target, the KPI is worked out from it
+            'outbound_calls' => ['required', 'integer', 'min:1', 'max:4294967295'],
+            // approximate targets, optional as nobody knows how many customers will call, comment or message
+            'inbound_calls'  => $count,
 
             'platforms'                      => ['nullable', 'array'],
             'platforms.*.social_platform_id' => ['required', 'integer', 'distinct', Rule::in(SocialPlatform::query()->where('active', true)->pluck('id')->all())],
-            'platforms.*.total_replies'      => $count,
+            'platforms.*.inbound_calls'      => $count,
+            'platforms.*.comments'           => $count,
+            'platforms.*.message_replies'    => $count,
 
-            'projects'               => ['nullable', 'array'],
-            'projects.*.project_id'  => ['required', 'integer', 'distinct', Rule::in(Project::query()->where('active', true)->pluck('id')->all())],
-            'projects.*.total_calls' => $count,
-        ];
-    }
-
-    /**
-     * Get the "after" validation callables for the request.
-     */
-    public function after(): array
-    {
-        return [
-            function (Validator $validator) {
-                if ($validator->errors()->isNotEmpty()) {
-                    return;
-                }
-
-                $counts = collect($this->only(['outbound_calls', 'inbound_calls', 'message_replies']))
-                    ->merge(collect($this->input('platforms', []))->pluck('total_replies'))
-                    ->merge(collect($this->input('projects', []))->pluck('total_calls'));
-
-                if ($counts->every(fn ($value) => $value === null || $value === '')) {
-                    $validator->errors()->add('outbound_calls', 'Set a target for at least one activity.');
-                }
-            },
+            'projects'                   => ['nullable', 'array'],
+            'projects.*.project_id'      => ['required', 'integer', 'distinct', Rule::in(Project::query()->where('active', true)->pluck('id')->all())],
+            'projects.*.inbound_calls'   => $count,
+            'projects.*.comments'        => $count,
+            'projects.*.message_replies' => $count,
         ];
     }
 
@@ -103,9 +85,14 @@ class DailyTargetRequest extends FormRequest
             'from'                           => 'from date',
             'to'                             => 'to date',
             'platforms.*.social_platform_id' => 'social platform',
-            'platforms.*.total_replies'      => 'comment replies',
+            'outbound_calls'                 => 'outbound call target',
+            'platforms.*.inbound_calls'      => 'outbound calls',
+            'platforms.*.comments'           => 'comments',
+            'platforms.*.message_replies'    => 'message replies',
             'projects.*.project_id'          => 'project',
-            'projects.*.total_calls'         => 'total calls',
+            'projects.*.inbound_calls'       => 'outbound calls',
+            'projects.*.comments'            => 'comments',
+            'projects.*.message_replies'     => 'message replies',
         ];
     }
 

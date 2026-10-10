@@ -87,10 +87,11 @@ class LeaveRequestTest extends TestCase
         $this->assertSame($this->manager->id, $leave->fresh()->approved_by);
         $this->assertSame('L', $marks());
 
-        // approved leave blocks a report, a rejected one does not
+        // approved leave blocks a report, a rejected one does not: the report is filed under the day it is sent on
+        Carbon::setTestNow('2026-10-05 10:00:00');
         $this->actingAs($this->agent)->postJson('/daily-reports', $this->reportPayload('2026-10-05'))
             ->assertStatus(422)
-            ->assertJsonValidationErrors(['report_date']);
+            ->assertJsonValidationErrors(['outbound_calls']);
 
         $this->actingAs($this->manager)->postJson("/leaves/{$leave->id}/reject")
             ->assertOk()
@@ -185,7 +186,7 @@ class LeaveRequestTest extends TestCase
             'report_date' => $date,
             'outbound_calls' => 40,
             'inbound_calls' => 15,
-            'message_replies' => 22,
+            'order_processing' => 0,
         ];
     }
 }

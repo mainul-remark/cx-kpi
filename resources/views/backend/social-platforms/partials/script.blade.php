@@ -38,10 +38,18 @@
                 { data: 'slug', name: 'slug' },
                 {
                     data: 'active', name: 'active', searchable: false,
-                    render: function (data) {
-                        return data
+                    render: function (data, type, row) {
+                        if (type !== 'display') return data;
+
+                        let html = data
                             ? '<span class="badge text-bg-success">Active</span>'
                             : '<span class="badge text-bg-danger">Inactive</span>';
+
+                        if (row.has_outbound_calls) html += ' <span class="badge text-bg-primary">Outbound Calls</span>';
+                        if (row.has_comments) html += ' <span class="badge text-bg-info">Comments</span>';
+                        if (row.has_message_replies) html += ' <span class="badge text-bg-warning">Message Replies</span>';
+
+                        return html;
                     }
                 },
                 {
@@ -98,6 +106,9 @@
             $('#social_platform_name').val(socialPlatform.name);
             $('#social_platform_slug').val(socialPlatform.slug);
             $('#social_platform_notes').val(socialPlatform.notes || '');
+            $('#social_platform_has_outbound_calls').prop('checked', !!socialPlatform.has_outbound_calls);
+            $('#social_platform_has_comments').prop('checked', !!socialPlatform.has_comments);
+            $('#social_platform_has_message_replies').prop('checked', !!socialPlatform.has_message_replies);
             $('#social_platform_active').prop('checked', !!socialPlatform.active);
         }
 

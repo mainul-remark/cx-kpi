@@ -151,7 +151,7 @@ class AttendanceTest extends TestCase
             'report_date' => $date,
             'outbound_calls' => 10,
             'inbound_calls' => 5,
-            'message_replies' => 8,
+            'order_processing' => 0,
         ]);
     }
 }

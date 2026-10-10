@@ -1,7 +1,7 @@
 <script>
     $(function () {
         const reportUrl = @json(route('daily-reports.index'));
-        const listUrl = @json($isTeam ? route('daily-reports.team') : route('daily-reports.index'));
+        const listUrl = @json(route($listRoute));
         const isTeam = @json($isTeam);
         const can = {
             show: @json((bool) allowed('daily-reports.show')),
@@ -18,10 +18,16 @@
             { data: 'report_date', name: 'report_date' },
             { data: 'user.name', name: 'user.name', orderable: false, defaultContent: '' },
             { data: 'outbound_calls', name: 'outbound_calls', searchable: false },
+            { data: 'order_processing', name: 'order_processing', searchable: false },
             { data: 'inbound_calls', name: 'inbound_calls', searchable: false },
-            { data: 'message_replies', name: 'message_replies', searchable: false },
-            { data: 'platform_replies_total', name: 'platform_replies_total', searchable: false, render: count },
-            { data: 'project_calls_total', name: 'project_calls_total', searchable: false, render: count },
+            {
+                data: 'platform_comments', name: 'platform_comments', orderable: false, searchable: false,
+                render: function (data, type, row) { return count(row.platform_comments) + count(row.project_comments); }
+            },
+            {
+                data: 'platform_messages', name: 'platform_messages', orderable: false, searchable: false,
+                render: function (data, type, row) { return count(row.platform_messages) + count(row.project_messages); }
+            },
             {
                 data: 'id', name: 'id', orderable: false, searchable: false, width: '140px',
                 render: function (id, type, row) {

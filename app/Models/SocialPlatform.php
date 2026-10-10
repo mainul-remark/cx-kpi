@@ -13,12 +13,18 @@ class SocialPlatform extends Model
         'notes',
         'active',
         'slug',
+        'has_outbound_calls',
+        'has_comments',
+        'has_message_replies',
     ];
 
     protected function casts(): array
     {
         return [
-            'active' => 'boolean',
+            'active'                    => 'boolean',
+            'has_outbound_calls'        => 'boolean',
+            'has_comments'              => 'boolean',
+            'has_message_replies'       => 'boolean',
         ];
     }
 
@@ -40,9 +46,12 @@ class SocialPlatform extends Model
         $socialPlatform ??= new self();
 
         $socialPlatform->fill([
-            'name'   => $data['name'],
-            'notes'  => $data['notes'] ?? null,
-            'active' => $data['active'] ?? true,
+            'name'                  => $data['name'],
+            'notes'                 => $data['notes'] ?? null,
+            'active'                => $data['active'] ?? true,
+            'has_outbound_calls'    => $data['has_outbound_calls'] ?? true,
+            'has_comments'          => $data['has_comments'] ?? true,
+            'has_message_replies'   => $data['has_message_replies'] ?? true,
         ]);
 
         if ($socialPlatform->isDirty('name') || empty($socialPlatform->slug)) {

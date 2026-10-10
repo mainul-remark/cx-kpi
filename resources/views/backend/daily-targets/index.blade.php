@@ -69,10 +69,11 @@
                                     <th>Date</th>
                                     <th>User</th>
                                     <th>Outbound Calls</th>
-                                    <th>Inbound Calls</th>
-                                    <th>Message Replies</th>
-                                    <th>Comment Replies</th>
-                                    <th>Project Calls</th>
+                                    <th>Inbound Calls (approx.)</th>
+                                    <th>Comments (approx.)</th>
+                                    <th>Message Replies (approx.)</th>
+                                    <th>By Project (approx.)</th>
+                                    <th>By Social Platform (approx.)</th>
                                     <th>Set By</th>
                                     <th>Action</th>
                                 </tr>

@@ -19,7 +19,7 @@ class SocialPlatformController extends Controller
         }
 
         $socialPlatforms = SocialPlatform::query()
-            ->select(['id', 'name', 'notes', 'slug', 'active', 'created_at'])
+            ->select(['id', 'name', 'notes', 'slug', 'active', 'has_outbound_calls', 'has_comments', 'has_message_replies', 'created_at'])
             // newest first until the user sorts by a column
             ->when(!$request->has('order'), fn ($query) => $query->latest());
 

@@ -9,9 +9,12 @@ use App\Models\UserLeave;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class DailyReportRequest extends FormRequest
 {
+    private ?string $reportDate = null;
+
     /**
      * Determine if the user is authorized to make this request.
      */
@@ -25,6 +28,8 @@ class DailyReportRequest extends FormRequest
 
     /**
      * Get the validation rules that apply to the request.
+     *
+     * The report date is not an input: the system picks it, see reportDate().
      *
      * @return array<string, ValidationRule|array<mixed>|string>
      */
@@ -41,60 +46,67 @@ class DailyReportRequest extends FormRequest
             ->all();
 
         $count = ['required', 'integer', 'min:0', 'max:4294967295'];
+        // the counts of a project or a platform are left out of the form when their activity is switched off
+        $optionalCount = ['nullable', 'integer', 'min:0', 'max:4294967295'];
         $note = ['nullable', 'string', 'max:5000'];
 
         return [
-            'report_date' => [
-                'required',
-                'date_format:Y-m-d',
-                'before_or_equal:today',
-                // store saves over the report of the same day, so only an update can collide
-                function (string $attribute, mixed $value, \Closure $fail) use ($report) {
-                    $taken = DailyReport::query()
-                        ->where('user_id', $this->user()->id)
-                        ->whereDate('report_date', $value)
-                        ->when($report, fn ($query) => $query->whereKeyNot($report->id))
-                        ->exists();
-
-                    if ($taken) {
-                        $fail('You already have a report for this date.');
-                    }
-                },
-                // a half day of leave is still worked, a full day is not
-                function (string $attribute, mixed $value, \Closure $fail) {
-                    $onLeave = UserLeave::query()
-                        ->where('user_id', $this->user()->id)
-                        ->whereDate('leave_date', $value)
-                        ->where('portion', UserLeave::PORTION_FULL)
-                        ->where('status', UserLeave::STATUS_APPROVED)
-                        ->exists();
-
-                    if ($onLeave) {
-                        $fail('You are on leave on this date, so no report can be submitted for it.');
-                    }
-                },
-            ],
-            'outbound_calls'       => $count,
-            'outbound_calls_note'  => $note,
-            'inbound_calls'        => $count,
-            'inbound_calls_note'   => $note,
-            'message_replies'      => $count,
-            'message_replies_note' => $note,
+            'outbound_calls'        => $count,
+            'outbound_calls_note'   => $note,
+            'inbound_calls'         => $count,
+            'inbound_calls_note'    => $note,
+            'order_processing'      => $count,
+            'order_processing_note' => $note,
 
             'platforms'                      => ['nullable', 'array'],
             'platforms.*.social_platform_id' => ['required', 'integer', 'distinct', Rule::in($platformIds)],
-            'platforms.*.total_replies'      => $count,
+            'platforms.*.inbound_calls'      => $optionalCount,
+            'platforms.*.comments'           => $optionalCount,
+            'platforms.*.message_replies'    => $optionalCount,
             'platforms.*.note'               => $note,
 
-            'projects'               => ['nullable', 'array'],
-            'projects.*.project_id'  => ['required', 'integer', 'distinct', Rule::in($projectIds)],
-            'projects.*.total_calls' => $count,
-            'projects.*.note'        => $note,
+            'projects'                    => ['nullable', 'array'],
+            'projects.*.project_id'       => ['required', 'integer', 'distinct', Rule::in($projectIds)],
+            'projects.*.inbound_calls'    => $optionalCount,
+            'projects.*.comments'         => $optionalCount,
+            'projects.*.message_replies'  => $optionalCount,
+            'projects.*.note'             => $note,
         ];
     }
 
     /**
-     * The report this request writes to: the routed one on update, the user's report for the date on store.
+     * Get the "after" validation callables for the request.
+     */
+    public function after(): array
+    {
+        return [
+            function (Validator $validator) {
+                // a half day of leave is still worked, a full day is not
+                $onLeave = UserLeave::query()
+                    ->where('user_id', $this->user()->id)
+                    ->whereDate('leave_date', $this->reportDate())
+                    ->where('portion', UserLeave::PORTION_FULL)
+                    ->where('status', UserLeave::STATUS_APPROVED)
+                    ->exists();
+
+                if ($onLeave) {
+                    $validator->errors()->add('outbound_calls', 'You are on leave on this date, so no report can be submitted for it.');
+                }
+            },
+        ];
+    }
+
+    /**
+     * The day this report is for, picked by the system: the report's own day on update, else today.
+     */
+    public function reportDate(): string
+    {
+        return $this->reportDate ??= $this->route('daily_report')?->report_date->toDateString()
+            ?? today()->toDateString();
+    }
+
+    /**
+     * The report this request writes to: the routed one on update, the user's report for the day on store.
      */
     private function existingReport(): ?DailyReport
     {
@@ -102,14 +114,9 @@ class DailyReportRequest extends FormRequest
             return $this->route('daily_report');
         }
 
-        $date = $this->input('report_date');
-        if (!is_string($date) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
-            return null;
-        }
-
         return DailyReport::query()
             ->where('user_id', $this->user()->id)
-            ->whereDate('report_date', $date)
+            ->whereDate('report_date', $this->reportDate())
             ->first();
     }
 
@@ -121,12 +128,15 @@ class DailyReportRequest extends FormRequest
     public function attributes(): array
     {
         return [
-            'report_date'                    => 'report date',
             'platforms.*.social_platform_id' => 'social platform',
-            'platforms.*.total_replies'      => 'comment replies',
+            'platforms.*.inbound_calls'      => 'outbound calls',
+            'platforms.*.comments'           => 'comments',
+            'platforms.*.message_replies'    => 'message replies',
             'platforms.*.note'               => 'note',
             'projects.*.project_id'          => 'project',
-            'projects.*.total_calls'         => 'total calls',
+            'projects.*.inbound_calls'       => 'outbound calls',
+            'projects.*.comments'            => 'comments',
+            'projects.*.message_replies'     => 'message replies',
             'projects.*.note'                => 'note',
         ];
     }
@@ -139,7 +149,6 @@ class DailyReportRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'report_date.before_or_equal'       => 'The report date cannot be in the future.',
             'platforms.*.social_platform_id.in' => 'The selected social platform is not active.',
             'projects.*.project_id.in'          => 'The selected project is not active.',
         ];

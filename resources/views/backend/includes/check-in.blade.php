@@ -51,7 +51,7 @@
             });
         }
 
-        function notice(type, text) {
+        function notice(type, text, hideAfter) {
             let host = document.getElementById('checkInNotices');
             if (!host) {
                 host = document.createElement('div');
@@ -62,14 +62,19 @@
             const box = document.createElement('div');
             box.className = 'alert alert-' + type + ' alert-dismissible shadow-sm mb-2';
             box.setAttribute('role', 'alert');
+            // solid, deeper fills so the notice reads clearly over the page
+            const fills = { warning: '#b45309', danger: '#b91c1c', success: '#15803d', info: '#0369a1' };
+            box.style.cssText = 'background:' + (fills[type] || '#334155') + ';border-color:transparent;color:#fff;';
             box.textContent = text;
             const close = document.createElement('button');
             close.type = 'button';
             close.className = 'btn-close';
+            close.style.filter = 'invert(1) grayscale(100%) brightness(200%)';
             close.setAttribute('aria-label', 'Close');
             close.onclick = function () { box.remove(); };
             box.appendChild(close);
             host.appendChild(box);
+            if (hideAfter) { setTimeout(function () { box.remove(); }, hideAfter); }
             return box;
         }
 
@@ -99,24 +104,59 @@
             tick();
         }
 
-        button.addEventListener('click', function () {
-            if (busy) { return; }
-            const leaving = checkedInAt !== null;
-            if (leaving && !window.confirm('Check out now?')) { return; }
+        // SweetAlert2 is only loaded on some pages, so fetch it on demand when it is missing
+        function loadSwal() {
+            if (window.Swal) { return Promise.resolve(window.Swal); }
+            return new Promise(function (resolve, reject) {
+                const script = document.createElement('script');
+                script.src = 'https://cdn.jsdelivr.net/npm/sweetalert2@11';
+                script.onload = function () { resolve(window.Swal); };
+                script.onerror = reject;
+                document.head.appendChild(script);
+            });
+        }
 
+        function confirmCheckOut() {
+            return loadSwal().then(function (Swal) {
+                return Swal.fire({
+                    title: 'Check out now?',
+                    text: 'This ends your current work session.',
+                    icon: 'question',
+                    showCancelButton: true,
+                    confirmButtonColor: '#3085d6',
+                    cancelButtonColor: '#d33',
+                    confirmButtonText: 'Yes, check out',
+                }).then(function (result) { return result.isConfirmed; });
+            }).catch(function () {
+                return window.confirm('Check out now?');
+            });
+        }
+
+        function submit(leaving) {
             busy = true;
             button.classList.add('disabled');
             position().then(function (geo) {
                 return request(leaving ? routes.checkOut : routes.checkIn, 'POST', geo);
             }).then(function (state) {
                 render(state);
-                notice('success', state.message).querySelector('.btn-close').style.display = 'none';
+                notice('success', state.message, 4000);
                 warn(state.warnings);
             }).catch(function (error) {
-                notice('danger', error.message);
+                notice('danger', error.message, 8000);
             }).finally(function () {
                 busy = false;
                 button.classList.remove('disabled');
+            });
+        }
+
+        button.addEventListener('click', function () {
+            if (busy) { return; }
+            if (checkedInAt === null) { return submit(false); }
+
+            busy = true; // block double clicks while the dialog is open
+            confirmCheckOut().then(function (confirmed) {
+                busy = false;
+                if (confirmed) { submit(true); }
             });
         });
 

@@ -75,10 +75,10 @@
                                     <th>Date</th>
                                     <th>User</th>
                                     <th>Outbound Calls</th>
+                                    <th>Order Processing</th>
                                     <th>Inbound Calls</th>
+                                    <th>Comments</th>
                                     <th>Message Replies</th>
-                                    <th>Comment Replies</th>
-                                    <th>Project Calls</th>
                                     <th>Action</th>
                                 </tr>
                                 </thead>

@@ -88,8 +88,11 @@ class EmployeeKpiExport implements WithMultipleSheets
 
         $order = array_flip(array_keys($labels));
 
-        $activities = collect($row['activities'])
-            ->filter(fn (array $activity) => $activity['target'] > 0)
+        $activities = collect($row['activities'])->filter(fn (array $activity) => $activity['target'] > 0);
+
+        // the lines are the scored activities, the approximate targets stay off the sheet unless nothing is scored
+        $scored = $activities->filter(fn (array $activity) => ($weights[$activity['metric']] ?? 1.0) > 0);
+        $activities = ($scored->isNotEmpty() ? $scored : $activities)
             ->map(fn (array $activity, string $key) => $activity + [
                 'title' => $labels[$key] ?? $key,
                 'size' => $activity['target'] * ($weights[$activity['metric']] ?? 1.0),
@@ -172,16 +175,21 @@ class EmployeeKpiExport implements WithMultipleSheets
         $ids = fn (string $prefix) => $keys->filter(fn (string $key) => str_starts_with($key, $prefix))->map(fn (string $key) => (int) substr($key, strlen($prefix)));
 
         $labels = [];
-        foreach (['outbound_calls', 'inbound_calls', 'message_replies'] as $metric) {
+        foreach (['outbound_calls', 'inbound_calls'] as $metric) {
             $labels[$metric] = ReportDashboardService::METRICS[$metric];
         }
 
-        foreach (SocialPlatform::query()->whereIn('id', $ids('platform:'))->orderBy('name')->get(['id', 'name']) as $platform) {
-            $labels['platform:'.$platform->id] = $platform->name.' ('.ReportDashboardService::METRICS['comment_replies'].')';
-        }
+        $counts = ['inbound_calls' => 'Inbound Calls', 'comments' => 'Comments', 'message_replies' => 'Message Replies'];
 
-        foreach (Project::query()->whereIn('id', $ids('project:'))->orderBy('name')->get(['id', 'name']) as $project) {
-            $labels['project:'.$project->id] = $project->name.' ('.ReportDashboardService::METRICS['project_calls'].')';
+        $platforms = SocialPlatform::query()->whereIn('id', $ids('platform:'))->orderBy('name')->get(['id', 'name']);
+        $projects = Project::query()->whereIn('id', $ids('project:'))->orderBy('name')->get(['id', 'name']);
+
+        foreach (['platform:' => $platforms, 'project:' => $projects] as $prefix => $entities) {
+            foreach ($entities as $entity) {
+                foreach ($counts as $column => $title) {
+                    $labels[$prefix.$entity->id.':'.$column] = $entity->name.' ('.$title.')';
+                }
+            }
         }
 
         return $labels;

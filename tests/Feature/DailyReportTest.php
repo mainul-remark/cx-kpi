@@ -9,6 +9,7 @@ use App\Models\SocialPlatform;
 use App\Models\User;
 use Illuminate\Auth\Middleware\EnsureEmailIsVerified;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 use Uzzal\Acl\Middleware\AuthenticateWithAcl;
@@ -85,19 +86,37 @@ class DailyReportTest extends TestCase
 
         $this->assertSame($this->user->id, $report->user_id);
         $this->assertSame(40, $report->outbound_calls);
+        $this->assertSame(6, $report->order_processing);
         $this->assertSame('Busy day', $report->outbound_calls_note);
         $this->assertDatabaseHas('daily_report_platform_replies', [
             'daily_report_id' => $report->id,
             'social_platform_id' => $platform->id,
-            'total_replies' => 12,
+            'inbound_calls' => 2,
+            'comments' => 12,
+            'message_replies' => 9,
             'note' => 'Campaign post',
         ]);
         $this->assertDatabaseHas('daily_report_project_calls', [
             'daily_report_id' => $report->id,
             'project_id' => $project->id,
-            'total_calls' => 25,
+            'inbound_calls' => 25,
+            'comments' => 4,
+            'message_replies' => 7,
             'note' => null,
         ]);
+    }
+
+    public function test_the_system_picks_the_report_date(): void
+    {
+        [$platform, $project] = $this->platformAndProject();
+
+        // a date in the submission is not taken
+        $payload = ['report_date' => today()->subDays(3)->toDateString()] + $this->payload($platform, $project);
+        $this->postJson('/daily-reports', $payload)
+            ->assertCreated()
+            ->assertJsonPath('data.report_date', today()->toDateString());
+
+        $this->assertDatabaseCount('daily_reports', 1);
     }
 
     public function test_saving_the_same_date_again_updates_the_report(): void
@@ -108,17 +127,30 @@ class DailyReportTest extends TestCase
 
         $second = $this->payload($platform, $project);
         $second['outbound_calls'] = 55;
-        $second['projects'][0]['total_calls'] = 30;
-        $second['platforms'] = [];
+        $second['projects'][0]['inbound_calls'] = 30;
+        $second['projects'][0]['comments'] = 0;
 
         $this->postJson('/daily-reports', $second)->assertOk();
 
         $this->assertDatabaseCount('daily_reports', 1);
         $this->assertDatabaseCount('daily_report_project_calls', 1);
         $this->assertDatabaseHas('daily_reports', ['outbound_calls' => 55]);
-        $this->assertDatabaseHas('daily_report_project_calls', ['total_calls' => 30]);
-        // rows left out of the submission are removed
-        $this->assertDatabaseCount('daily_report_platform_replies', 0);
+        $this->assertDatabaseHas('daily_report_project_calls', ['inbound_calls' => 30, 'comments' => 0, 'message_replies' => 7]);
+    }
+
+    public function test_a_count_of_an_activity_that_is_switched_off_is_not_stored(): void
+    {
+        $project = Project::createOrUpdateProject(['name' => 'Calls Only', 'has_comments' => false, 'has_message_replies' => false]);
+        $platform = SocialPlatform::createOrUpdateSocialPlatform(['name' => 'Facebook', 'has_outbound_calls' => false]);
+
+        $this->postJson('/daily-reports', $this->payload($platform, $project))->assertCreated();
+
+        $this->assertDatabaseHas('daily_report_project_calls', [
+            'project_id' => $project->id, 'inbound_calls' => 25, 'comments' => 0, 'message_replies' => 0,
+        ]);
+        $this->assertDatabaseHas('daily_report_platform_replies', [
+            'social_platform_id' => $platform->id, 'inbound_calls' => 0, 'comments' => 12, 'message_replies' => 9,
+        ]);
     }
 
     public function test_invalid_reports_are_rejected(): void
@@ -127,18 +159,18 @@ class DailyReportTest extends TestCase
         $inactiveProject = Project::createOrUpdateProject(['name' => 'Closed', 'active' => false]);
 
         $payload = $this->payload($platform, $project);
-        $payload['report_date'] = today()->addDay()->toDateString();
         $payload['outbound_calls'] = -1;
-        $payload['platforms'][0]['total_replies'] = 'many';
-        $payload['projects'][] = ['project_id' => $inactiveProject->id, 'total_calls' => 3];
-        $payload['projects'][] = ['project_id' => $project->id, 'total_calls' => 1];
+        unset($payload['order_processing']);
+        $payload['platforms'][0]['comments'] = 'many';
+        $payload['projects'][] = ['project_id' => $inactiveProject->id, 'inbound_calls' => 3];
+        $payload['projects'][] = ['project_id' => $project->id, 'inbound_calls' => 1];
 
         $this->postJson('/daily-reports', $payload)
             ->assertStatus(422)
             ->assertJsonValidationErrors([
-                'report_date',
                 'outbound_calls',
-                'platforms.0.total_replies',
+                'order_processing',
+                'platforms.0.comments',
                 'projects.1.project_id',
                 'projects.2.project_id',
             ]);
@@ -160,38 +192,34 @@ class DailyReportTest extends TestCase
             ->assertSee('Inactive');
 
         $payload = $this->payload($platform, $project);
-        $payload['projects'][0]['total_calls'] = 26;
+        $payload['projects'][0]['inbound_calls'] = 26;
 
         $this->putJson("/daily-reports/{$report->id}", $payload)->assertOk();
-        $this->assertDatabaseHas('daily_report_project_calls', ['project_id' => $project->id, 'total_calls' => 26]);
+        $this->assertDatabaseHas('daily_report_project_calls', ['project_id' => $project->id, 'inbound_calls' => 26]);
 
-        // a report for another day no longer offers the project
-        $yesterday = today()->subDay()->toDateString();
-        $this->get("/daily-reports/create?date={$yesterday}")
+        // another user's report no longer offers the project
+        $this->actingAs(User::factory()->create());
+        $this->get('/daily-reports/create')
             ->assertOk()
             ->assertDontSee('Inbound Support');
 
-        $payload['report_date'] = $yesterday;
         $this->postJson('/daily-reports', $payload)
             ->assertStatus(422)
             ->assertJsonValidationErrors(['projects.0.project_id']);
     }
 
-    public function test_update_cannot_move_a_report_onto_a_date_that_already_has_one(): void
+    public function test_update_keeps_the_date_of_its_report(): void
     {
         [$platform, $project] = $this->platformAndProject();
-        $yesterday = today()->subDay()->toDateString();
-
         $this->postJson('/daily-reports', $this->payload($platform, $project))->assertCreated();
-        $this->postJson('/daily-reports', ['report_date' => $yesterday] + $this->payload($platform, $project))->assertCreated();
+        $report = DailyReport::query()->firstOrFail();
 
-        $todayReport = DailyReport::query()->whereDate('report_date', today())->firstOrFail();
+        $moved = ['report_date' => today()->subDay()->toDateString()] + $this->payload($platform, $project);
+        $this->putJson("/daily-reports/{$report->id}", $moved)
+            ->assertOk()
+            ->assertJsonPath('data.report_date', today()->toDateString());
 
-        $this->putJson("/daily-reports/{$todayReport->id}", ['report_date' => $yesterday] + $this->payload($platform, $project))
-            ->assertStatus(422)
-            ->assertJsonValidationErrors(['report_date']);
-
-        $this->assertDatabaseCount('daily_reports', 2);
+        $this->assertDatabaseCount('daily_reports', 1);
     }
 
     public function test_report_of_another_user_cannot_be_viewed_or_changed(): void
@@ -246,8 +274,11 @@ class DailyReportTest extends TestCase
             ->assertJsonPath('recordsTotal', 1)
             ->assertJsonPath('data.0.user_id', $other->id)
             ->assertJsonPath('data.0.is_own', true)
-            ->assertJsonPath('data.0.platform_replies_total', 12)
-            ->assertJsonPath('data.0.project_calls_total', 25);
+            ->assertJsonPath('data.0.order_processing', 6)
+            ->assertJsonPath('data.0.platform_comments', 12)
+            ->assertJsonPath('data.0.project_comments', 4)
+            ->assertJsonPath('data.0.platform_messages', 9)
+            ->assertJsonPath('data.0.project_messages', 7);
 
         $this->getJson('/daily-reports/team?draw=1', $ajax)
             ->assertOk()
@@ -277,17 +308,32 @@ class DailyReportTest extends TestCase
         $this->assertDatabaseCount('daily_report_project_calls', 0);
     }
 
-    public function test_entry_form_lists_active_platforms_and_projects(): void
+    public function test_entry_form_has_two_tabs_with_the_inputs_of_what_is_switched_on(): void
     {
         $this->platformAndProject();
         SocialPlatform::createOrUpdateSocialPlatform(['name' => 'Orkut', 'active' => false]);
+        SocialPlatform::createOrUpdateSocialPlatform(['name' => 'Viber', 'has_comments' => false, 'has_message_replies' => true, 'has_outbound_calls' => false]);
+        Project::createOrUpdateProject(['name' => 'Silent', 'has_outbound_calls' => false, 'has_comments' => false, 'has_message_replies' => false]);
 
         $this->get('/daily-reports/create')
             ->assertOk()
             ->assertSee('Facebook')
             ->assertSee('Inbound Support')
             ->assertDontSee('Orkut')
-            ->assertSee('name="platforms[0][total_replies]"', false);
+            ->assertDontSee('Silent')
+            ->assertSee('data-bs-target="#calls-pane"', false)
+            ->assertSee('data-bs-target="#messages-pane"', false)
+            ->assertDontSee('name="report_date"', false)
+            ->assertDontSee('name="message_replies"', false)
+            ->assertSee('name="order_processing"', false)
+            ->assertSee('name="platforms[0][comments]"', false)
+            ->assertSee('name="platforms[0][message_replies]"', false)
+            ->assertSee('name="platforms[0][inbound_calls]"', false)
+            // Viber is only on for message replies
+            ->assertDontSee('name="platforms[1][comments]"', false)
+            ->assertDontSee('name="platforms[1][inbound_calls]"', false)
+            ->assertSee('name="platforms[1][message_replies]"', false)
+            ->assertSee('name="projects[0][comments]"', false);
     }
 
     /**
@@ -304,16 +350,15 @@ class DailyReportTest extends TestCase
     private function payload(SocialPlatform $platform, Project $project): array
     {
         return [
-            'report_date' => today()->toDateString(),
             'outbound_calls' => 40,
             'outbound_calls_note' => 'Busy day',
+            'order_processing' => 6,
             'inbound_calls' => 15,
-            'message_replies' => 22,
             'platforms' => [
-                ['social_platform_id' => $platform->id, 'total_replies' => 12, 'note' => 'Campaign post'],
+                ['social_platform_id' => $platform->id, 'inbound_calls' => 2, 'comments' => 12, 'message_replies' => 9, 'note' => 'Campaign post'],
             ],
             'projects' => [
-                ['project_id' => $project->id, 'total_calls' => 25],
+                ['project_id' => $project->id, 'inbound_calls' => 25, 'comments' => 4, 'message_replies' => 7],
             ],
         ];
     }

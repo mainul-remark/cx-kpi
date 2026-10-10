@@ -3,13 +3,26 @@
     $pageTitle = $isEdit ? 'Edit Daily Report' : 'Daily Report';
     $totals = [
         'outbound_calls' => 'Outbound Calls',
+        'order_processing' => 'Order Processing Calls',
         'inbound_calls' => 'Inbound Calls',
-        'message_replies' => 'Message Replies',
     ];
+    $inboundColumns = [['field' => 'inbound_calls', 'label' => 'Outbound Calls', 'class' => '%s-inbound']];
+    $commentColumns = [
+        ['field' => 'comments', 'label' => 'Comments', 'class' => '%s-comments'],
+        ['field' => 'message_replies', 'label' => 'Message Replies', 'class' => '%s-messages'],
+    ];
+    $withClass = fn (array $columns, string $group) => array_map(fn ($column) => ['class' => sprintf($column['class'], $group)] + $column, $columns);
 @endphp
 @section('title', $pageTitle)
 @push('styles')
     <link rel="stylesheet" href="{{asset('backend/reza-custom/css/custom.css')}}"/>
+    <style>
+        /* the open tab reads white on its filled pill, whatever the theme sets for a link */
+        #reportTabs .nav-link.active,
+        #reportTabs .nav-link.active i {
+            color: #fff !important;
+        }
+    </style>
 @endpush
 
 @section('body')
@@ -40,12 +53,13 @@
                             <h5 class="card-title mb-0">
                                 <i class="mdi mdi-calendar-check me-1"></i> Day End Data
                             </h5>
+                            {{-- the day is picked by the system, so it is shown and not asked for --}}
+                            <span class="badge text-bg-secondary fs-6">Report for {{ \Illuminate\Support\Carbon::parse($date)->format('d M Y') }}</span>
                         </div>
                         <div class="card-body">
-                            @if(session('owed_report_dates'))
+                            @if(session('report_required'))
                                 <div class="alert alert-warning" role="alert">
-                                    You checked in on {{ collect(session('owed_report_dates'))->map(fn ($day) => \Illuminate\Support\Carbon::parse($day)->format('d M Y'))->join(', ', ' and ') }}
-                                    without submitting a daily report. Please file {{ count(session('owed_report_dates')) > 1 ? 'those reports' : 'that report' }} to continue.
+                                    You are checked in. Please submit today's daily report to continue using the system.
                                 </div>
                             @endif
 
@@ -55,88 +69,134 @@
                                 </div>
                             @endif
 
-                            <div class="row mb-4">
-                                <div class="col-sm-6 col-md-3">
-                                    <label class="form-label" for="report_date">
-                                        Report Date <span class="text-danger">*</span>
-                                    </label>
-                                    <input type="date" name="report_date" id="report_date" class="form-control" value="{{ $date }}" max="{{ today()->toDateString() }}">
-                                    <div class="invalid-feedback" data-error-for="report_date"></div>
+                            <ul class="nav nav-pills justify-content-center mb-4" id="reportTabs" role="tablist">
+                                <li class="nav-item" role="presentation">
+                                    <button type="button" class="nav-link active" id="calls-tab" data-bs-toggle="pill" data-bs-target="#calls-pane" role="tab" aria-controls="calls-pane" aria-selected="true">
+                                        <i class="mdi mdi-phone me-1"></i> Calls
+                                        <span class="badge text-bg-danger d-none" data-tab-errors="calls-pane"></span>
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button type="button" class="nav-link" id="messages-tab" data-bs-toggle="pill" data-bs-target="#messages-pane" role="tab" aria-controls="messages-pane" aria-selected="false">
+                                        <i class="mdi mdi-comment-multiple-outline me-1"></i> Comments + Message
+                                        <span class="badge text-bg-danger d-none" data-tab-errors="messages-pane"></span>
+                                    </button>
+                                </li>
+                            </ul>
+
+                            <div class="tab-content">
+                                <div class="tab-pane fade show active" id="calls-pane" role="tabpanel" aria-labelledby="calls-tab" tabindex="0">
+                                    <div class="table-responsive mb-4">
+                                        <table class="table table-bordered align-middle w-100">
+                                            <thead>
+                                            <tr>
+                                                <th style="width: 30%">Activity</th>
+                                                <th style="width: 20%">Total <span class="text-danger">*</span></th>
+                                                <th>Note</th>
+                                            </tr>
+                                            </thead>
+                                            <tbody>
+                                            @foreach($totals as $field => $label)
+                                                <tr>
+                                                    <td><label class="mb-0" for="{{ $field }}">{{ $label }}</label></td>
+                                                    <td>
+                                                        <input type="number" name="{{ $field }}" id="{{ $field }}" class="form-control" min="0" step="1" value="{{ $report?->{$field} ?? 0 }}">
+                                                        <div class="invalid-feedback" data-error-for="{{ $field }}"></div>
+                                                    </td>
+                                                    <td>
+                                                        <input type="text" name="{{ $field }}_note" class="form-control" maxlength="5000" placeholder="Optional note" value="{{ $report?->{$field.'_note'} }}" aria-label="{{ $label }} note">
+                                                        <div class="invalid-feedback" data-error-for="{{ $field }}_note"></div>
+                                                    </td>
+                                                </tr>
+                                            @endforeach
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    <div class="row">
+                                        @if(count($projectRows) > 0)
+                                            <div class="col-md-6">
+                                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                                    <h6 class="mb-0">Outbound Calls by Project</h6>
+                                                    <span class="badge text-bg-primary">Total: <span data-sum-of="project-inbound">0</span></span>
+                                                </div>
+                                                <div class="mb-4">
+                                                    @include('backend.daily-reports.partials.rows', [
+                                                        'rows' => $projectRows,
+                                                        'group' => 'projects',
+                                                        'columns' => $withClass($inboundColumns, 'project'),
+                                                        'withNote' => false,
+                                                        'nameHeading' => 'Project',
+                                                        'emptyText' => 'No project takes outbound calls.',
+                                                    ])
+                                                </div>
+                                            </div>
+                                        @endif
+
+                                        <div class="col-md-6">
+                                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                                <h6 class="mb-0">Outbound Calls by Social Platform</h6>
+                                                <span class="badge text-bg-primary">Total: <span data-sum-of="platform-inbound">0</span></span>
+                                            </div>
+                                            @include('backend.daily-reports.partials.rows', [
+                                                'rows' => $platformRows,
+                                                'group' => 'platforms',
+                                                'columns' => $withClass($inboundColumns, 'platform'),
+                                                'withNote' => false,
+                                                'nameHeading' => 'Social Platform',
+                                                'emptyText' => 'No social platform takes outbound calls.',
+                                            ])
+                                        </div>
+                                    </div>
+
+
+                                </div>
+
+                                <div class="tab-pane fade" id="messages-pane" role="tabpanel" aria-labelledby="messages-tab" tabindex="0">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <h6 class="mb-0">By Project</h6>
+                                        <span>
+                                            <span class="badge text-bg-primary">Comments: <span data-sum-of="project-comments">0</span></span>
+                                            <span class="badge text-bg-primary">Messages: <span data-sum-of="project-messages">0</span></span>
+                                        </span>
+                                    </div>
+                                    <div class="mb-4">
+                                        @include('backend.daily-reports.partials.rows', [
+                                            'rows' => $projectRows,
+                                            'group' => 'projects',
+                                            'columns' => $withClass($commentColumns, 'project'),
+                                            'withNote' => true,
+                                            'nameHeading' => 'Project',
+                                            'emptyText' => 'No project takes comments or messages.',
+                                        ])
+                                    </div>
+
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <h6 class="mb-0">By Social Platform</h6>
+                                        <span>
+                                            <span class="badge text-bg-primary">Comments: <span data-sum-of="platform-comments">0</span></span>
+                                            <span class="badge text-bg-primary">Messages: <span data-sum-of="platform-messages">0</span></span>
+                                        </span>
+                                    </div>
+                                    @include('backend.daily-reports.partials.rows', [
+                                        'rows' => $platformRows,
+                                        'group' => 'platforms',
+                                        'columns' => $withClass($commentColumns, 'platform'),
+                                        'withNote' => true,
+                                        'nameHeading' => 'Social Platform',
+                                        'emptyText' => 'No social platform takes comments or messages.',
+                                    ])
                                 </div>
                             </div>
 
-                            <div class="table-responsive">
-                                <table class="table table-bordered align-middle w-100">
-                                    <thead>
-                                    <tr>
-                                        <th style="width: 30%">Activity</th>
-                                        <th style="width: 20%">Total <span class="text-danger">*</span></th>
-                                        <th>Note</th>
-                                    </tr>
-                                    </thead>
-                                    <tbody>
-                                    @foreach($totals as $field => $label)
-                                        <tr>
-                                            <td><label class="mb-0" for="{{ $field }}">{{ $label }}</label></td>
-                                            <td>
-                                                <input type="number" name="{{ $field }}" id="{{ $field }}" class="form-control" min="0" step="1" value="{{ $report?->{$field} ?? 0 }}">
-                                                <div class="invalid-feedback" data-error-for="{{ $field }}"></div>
-                                            </td>
-                                            <td>
-                                                <input type="text" name="{{ $field }}_note" class="form-control" maxlength="5000" placeholder="Optional note" value="{{ $report?->{$field.'_note'} }}" aria-label="{{ $label }} note">
-                                                <div class="invalid-feedback" data-error-for="{{ $field }}_note"></div>
-                                            </td>
-                                        </tr>
-                                    @endforeach
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="col-xl-12">
-                    <div class="card">
-                        <div class="card-header d-flex justify-content-between align-items-center border-bottom">
-                            <h5 class="card-title mb-0">
-                                <i class="mdi mdi-comment-multiple-outline me-1"></i> Comment Replies by Social Platform
-                            </h5>
-                            <span class="badge text-bg-primary">Total: <span data-sum-of="platform-count">0</span></span>
-                        </div>
-                        <div class="card-body">
-                            @include('backend.daily-reports.partials.rows', [
-                                'rows' => $platformRows,
-                                'group' => 'platforms',
-                                'idField' => 'social_platform_id',
-                                'countField' => 'total_replies',
-                                'countClass' => 'platform-count',
-                                'nameHeading' => 'Social Platform',
-                                'countHeading' => 'Comment Replies',
-                                'emptyText' => 'No active social platform found.',
-                            ])
-                        </div>
-                    </div>
-                </div>
-
-                <div class="col-xl-12">
-                    <div class="card">
-                        <div class="card-header d-flex justify-content-between align-items-center border-bottom">
-                            <h5 class="card-title mb-0">
-                                <i class="mdi mdi-phone-outline me-1"></i> Calls by Project
-                            </h5>
-                            <span class="badge text-bg-primary">Total: <span data-sum-of="project-count">0</span></span>
-                        </div>
-                        <div class="card-body">
-                            @include('backend.daily-reports.partials.rows', [
-                                'rows' => $projectRows,
-                                'group' => 'projects',
-                                'idField' => 'project_id',
-                                'countField' => 'total_calls',
-                                'countClass' => 'project-count',
-                                'nameHeading' => 'Project',
-                                'countHeading' => 'Total Calls',
-                                'emptyText' => 'No active project found.',
-                            ])
+                            {{-- the id of each row is posted once, whichever tab its inputs are in --}}
+                            @foreach(['projects' => ['project_id', $projectRows], 'platforms' => ['social_platform_id', $platformRows]] as $group => [$idField, $rows])
+                                @foreach($rows as $index => $row)
+                                    @if($row['inbound_calls'] || $row['comments'] || $row['message_replies'])
+                                        <input type="hidden" name="{{ $group }}[{{ $index }}][{{ $idField }}]" value="{{ $row['id'] }}">
+                                    @endif
+                                @endforeach
+                            @endforeach
                         </div>
                         <div class="card-footer text-end">
                             @allowed('daily-reports.index')

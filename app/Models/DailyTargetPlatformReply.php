@@ -10,13 +10,17 @@ class DailyTargetPlatformReply extends Model
     protected $fillable = [
         'daily_target_id',
         'social_platform_id',
-        'total_replies',
+        'inbound_calls',
+        'comments',
+        'message_replies',
     ];
 
     protected function casts(): array
     {
         return [
-            'total_replies' => 'integer',
+            'inbound_calls'   => 'integer',
+            'comments'        => 'integer',
+            'message_replies' => 'integer',
         ];
     }
 

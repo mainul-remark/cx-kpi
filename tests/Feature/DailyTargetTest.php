@@ -83,8 +83,10 @@ class DailyTargetTest extends TestCase
         $this->assertSame(50, $target->outbound_calls);
         $this->assertNull($target->inbound_calls);
         $this->assertSame($this->manager->id, $target->set_by);
-        $this->assertSame(30, $target->platformReplies()->where('social_platform_id', $platform->id)->value('total_replies'));
-        $this->assertSame(20, $target->projectCalls()->where('project_id', $project->id)->value('total_calls'));
+        $this->assertSame(30, $target->platformReplies()->where('social_platform_id', $platform->id)->value('comments'));
+        $this->assertSame(5, $target->platformReplies()->where('social_platform_id', $platform->id)->value('message_replies'));
+        $this->assertNull($target->platformReplies()->where('social_platform_id', $platform->id)->value('inbound_calls'));
+        $this->assertSame(20, $target->projectCalls()->where('project_id', $project->id)->value('inbound_calls'));
     }
 
     public function test_setting_a_target_again_replaces_the_one_of_that_day(): void
@@ -96,7 +98,7 @@ class DailyTargetTest extends TestCase
 
         $second = $this->payload($users, '2026-10-07', '2026-10-07', $platform, $project);
         $second['outbound_calls'] = 80;
-        $second['platforms'][0]['total_replies'] = null;
+        $second['platforms'][0] = ['social_platform_id' => $platform->id, 'comments' => null, 'message_replies' => null];
 
         $this->postJson('/daily-targets', $second)->assertCreated();
 
@@ -158,16 +160,29 @@ class DailyTargetTest extends TestCase
             ->assertStatus(422)
             ->assertJsonValidationErrors(['to']);
 
+        // the outbound call target is the one that is required, approximate targets alone are not enough
         $this->postJson('/daily-targets', [
             'user_ids' => [$users[0]->id],
             'from' => '2026-10-06',
             'to' => '2026-10-06',
-            'platforms' => [['social_platform_id' => $platform->id, 'total_replies' => null]],
+            'inbound_calls' => 30,
+            'platforms' => [['social_platform_id' => $platform->id, 'comments' => 10]],
         ])
             ->assertStatus(422)
             ->assertJsonValidationErrors(['outbound_calls']);
 
         $this->assertDatabaseCount('daily_targets', 0);
+
+        // and with it alone the target is set, every other one is optional
+        $this->postJson('/daily-targets', [
+            'user_ids' => [$users[0]->id],
+            'from' => '2026-10-06',
+            'to' => '2026-10-06',
+            'outbound_calls' => 40,
+        ])->assertCreated();
+
+        $this->assertDatabaseCount('daily_targets', 1);
+        $this->assertDatabaseCount('daily_target_platform_replies', 0);
     }
 
     public function test_form_offers_the_quick_ranges_with_a_week_starting_on_saturday(): void
@@ -184,7 +199,8 @@ class DailyTargetTest extends TestCase
                 ['label' => 'Rest of the Month', 'from' => '2026-10-06', 'to' => '2026-10-31'],
                 ['label' => 'Next Month', 'from' => '2026-11-01', 'to' => '2026-11-30'],
             ])
-            ->assertSee('name="platforms[0][total_replies]"', false);
+            ->assertSee('name="platforms[0][comments]"', false)
+            ->assertSee('name="projects[0][message_replies]"', false);
     }
 
     public function test_targets_are_listed_edited_and_deleted(): void
@@ -199,7 +215,8 @@ class DailyTargetTest extends TestCase
             ->assertOk()
             ->assertJsonPath('recordsTotal', 1)
             ->assertJsonPath('data.0.target_date', '2026-10-06')
-            ->assertJsonPath('data.0.platform_replies_total', 30)
+            ->assertJsonPath('data.0.platform_comments', 30)
+            ->assertJsonPath('data.0.project_comments', null)
             ->assertJsonPath('data.0.set_by_user.name', $this->manager->name);
 
         $this->get("/daily-targets/{$target->id}/edit")
@@ -245,12 +262,11 @@ class DailyTargetTest extends TestCase
             'to' => $to,
             'outbound_calls' => 50,
             'inbound_calls' => null,
-            'message_replies' => 25,
             'platforms' => [
-                ['social_platform_id' => $platform->id, 'total_replies' => 30],
+                ['social_platform_id' => $platform->id, 'comments' => 30, 'message_replies' => 5],
             ],
             'projects' => [
-                ['project_id' => $project->id, 'total_calls' => 20],
+                ['project_id' => $project->id, 'inbound_calls' => 20],
             ],
         ];
     }

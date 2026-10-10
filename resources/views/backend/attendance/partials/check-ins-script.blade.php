@@ -5,7 +5,7 @@
         const statuses = {
             open: { label: 'Checked in', badge: 'bg-info' },
             completed: { label: 'Completed', badge: 'bg-success' },
-            incomplete: { label: 'Incomplete – no check out', badge: 'bg-warning' },
+            incomplete: { label: 'Did not check out', badge: 'bg-warning' },
             adjusted: { label: 'Corrected', badge: 'bg-primary' }
         };
         let rows = [];
@@ -53,14 +53,14 @@
                 if (canViewAll) html += '<td>' + esc(row.name) + '</td>';
                 html += '<td>' + esc(row.checked_in) + '</td>' +
                     '<td>' + (row.checked_out ? esc(row.checked_out) : '–') + '</td>' +
-                    '<td>' + hours(row.minutes) + '</td>' +
-                    '<td><span class="badge ' + status.badge + '"' + (row.note ? ' title="' + esc(row.note) + '"' : '') + '>' + status.label + '</span>' +
-                    (row.late_minutes > 0 ? ' <span class="badge bg-danger-transparent" title="After the shift start">Late ' + hours(row.late_minutes) + '</span>' : '') +
-                    (row.place === 'office' ? ' <span class="badge bg-light text-default">Office</span>' : '') + '</td>';
+                    '<td>' + hours(row.minutes) + (row.sessions > 1 ? ' <span class="badge bg-light text-muted border" title="Check-ins of the day">' + row.sessions + ' sessions</span>' : '') + '</td>' +
+                    '<td><span class="badge ' + status.badge + '"' + (row.note ? ' title="' + esc(row.note) + '"' : '') + '>' + status.label + '</span></td>';
                 if (canViewAll) {
                     const places = [place('in', row.in_location), place('out', row.out_location)].filter(Boolean);
                     html += '<td>' + (places.length ? places.join(' · ') : '<span class="text-muted">unavailable</span>') + '</td>' +
-                        '<td><button type="button" class="btn btn-sm btn-outline-primary check-in-adjust" data-index="' + index + '">Correct</button></td>';
+                        '<td>' + (row.status === 'incomplete'
+                            ? '<button type="button" class="btn btn-sm btn-outline-primary check-in-adjust" data-index="' + index + '">Correct</button>'
+                            : '') + '</td>';
                 }
                 $body.append(html + '</tr>');
             });
@@ -72,7 +72,7 @@
 
         $(document).on('click', '.check-in-adjust', function () {
             editing = rows[$(this).data('index')];
-            $('#adjustSummary').text(editing.name + ' · ' + formatDate(editing.work_date) + ' · checked in ' + editing.checked_in);
+            $('#adjustSummary').text(editing.name + ' · ' + formatDate(editing.work_date) + ' · checked in ' + editing.checked_in_input.slice(11));
             $('#adjust_checked_out_at').val(editing.checked_out_input || (editing.checked_in_input.slice(0, 10) + 'T18:00')).attr('min', editing.checked_in_input);
             $('#adjust_note').val('');
             $('#adjustError').addClass('d-none');

@@ -30,9 +30,16 @@ class DailyTargetController extends Controller
 
         $targets = DailyTarget::query()
             ->select('daily_targets.*')
-            ->with(['user:id,name', 'setByUser:id,name'])
-            ->withSum('platformReplies as platform_replies_total', 'total_replies')
-            ->withSum('projectCalls as project_calls_total', 'total_calls')
+            ->with([
+                'user:id,name',
+                'setByUser:id,name',
+                'projectCalls.project:id,name',
+                'platformReplies.socialPlatform:id,name',
+            ])
+            ->withSum('platformReplies as platform_comments', 'comments')
+            ->withSum('projectCalls as project_comments', 'comments')
+            ->withSum('platformReplies as platform_messages', 'message_replies')
+            ->withSum('projectCalls as project_messages', 'message_replies')
             ->when($request->filled('user_id'), fn ($query) => $query->where('user_id', (int) $request->input('user_id')))
             ->when($filters['from'] ?? null, fn ($query, $from) => $query->whereDate('target_date', '>=', $from))
             ->when($filters['to'] ?? null, fn ($query, $to) => $query->whereDate('target_date', '<=', $to))
@@ -121,61 +128,40 @@ class DailyTargetController extends Controller
     }
 
     /**
-     * The date ranges offered as one-click buttons on the form.
-     *
-     * @return list<array{label: string, from: string, to: string}>
-     */
-    private function presets(): array
-    {
-        $today = today();
-        $nextWeek = $today->copy()->startOfWeek(Holiday::WEEK_START_DAY)->addWeek();
-        $nextMonth = $today->copy()->addMonthNoOverflow()->startOfMonth();
-
-        $ranges = [
-            'Today' => [$today, $today],
-            'Tomorrow' => [$today->copy()->addDay(), $today->copy()->addDay()],
-            'Next Week' => [$nextWeek, $nextWeek->copy()->addDays(6)],
-            'Rest of the Month' => [$today, $today->copy()->endOfMonth()],
-            'Next Month' => [$nextMonth, $nextMonth->copy()->endOfMonth()],
-        ];
-
-        return collect($ranges)
-            ->map(fn (array $range, string $label) => [
-                'label' => $label,
-                'from' => $range[0]->toDateString(),
-                'to' => $range[1]->toDateString(),
-            ])
-            ->values()
-            ->all();
-    }
-
-    /**
      * The target form with one row per active platform and project, filled from the given target.
      */
     private function form(?DailyTarget $target)
     {
-        $replies = $target?->platformReplies()->pluck('total_replies', 'social_platform_id') ?? collect();
-        $calls = $target?->projectCalls()->pluck('total_calls', 'project_id') ?? collect();
+        $platforms = $target?->platformReplies()->get()->keyBy('social_platform_id') ?? collect();
+        $projects = $target?->projectCalls()->get()->keyBy('project_id') ?? collect();
+
+        $row = fn ($entity, $saved) => [
+            'id' => $entity->id,
+            'name' => $entity->name,
+            'active' => true,
+            'inbound_calls' => $entity->has_outbound_calls,
+            'comments' => $entity->has_comments,
+            'message_replies' => $entity->has_message_replies,
+            'values' => [
+                'inbound_calls' => $saved?->inbound_calls,
+                'comments' => $saved?->comments,
+                'message_replies' => $saved?->message_replies,
+            ],
+        ];
+
+        $columns = ['id', 'name', 'has_outbound_calls', 'has_comments', 'has_message_replies'];
 
         $platformRows = SocialPlatform::query()
             ->where('active', true)
             ->orderBy('name')
-            ->get(['id', 'name'])
-            ->map(fn (SocialPlatform $platform) => [
-                'id' => $platform->id,
-                'name' => $platform->name,
-                'count' => $replies->get($platform->id),
-            ]);
+            ->get($columns)
+            ->map(fn (SocialPlatform $platform) => $row($platform, $platforms->get($platform->id)));
 
         $projectRows = Project::query()
             ->where('active', true)
             ->orderBy('name')
-            ->get(['id', 'name'])
-            ->map(fn (Project $project) => [
-                'id' => $project->id,
-                'name' => $project->name,
-                'count' => $calls->get($project->id),
-            ]);
+            ->get($columns)
+            ->map(fn (Project $project) => $row($project, $projects->get($project->id)));
 
         $date = $target?->target_date->toDateString() ?? today()->toDateString();
 
@@ -185,7 +171,6 @@ class DailyTargetController extends Controller
             'selectedUserIds' => $target ? [$target->user_id] : [],
             'from' => $date,
             'to' => $date,
-            'presets' => $this->presets(),
             'platformRows' => $platformRows,
             'projectRows' => $projectRows,
         ]);

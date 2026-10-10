@@ -41,6 +41,51 @@ class CheckInTest extends TestCase
         parent::tearDown();
     }
 
+    public function test_checked_in_user_is_sent_to_the_report_form_until_it_is_filed(): void
+    {
+        AttendanceSession::create([
+            'user_id' => $this->agent->id,
+            'work_date' => '2026-10-05',
+            'checked_in_at' => '2026-10-05 06:08:12',
+            'checked_out_at' => null,
+            'auto_closed_at' => '2026-10-06 03:00:00',
+            'close_reason' => AttendanceSession::REASON_AUTO,
+        ]);
+
+        $this->actingAs($this->agent)->get('/dashboard')->assertRedirect(route('daily-reports.create'));
+        $this->actingAs($this->agent)->get(route('daily-reports.create'))->assertOk();
+
+        \DB::table('daily_reports')->insert([
+            'user_id' => $this->agent->id, 'report_date' => '2026-10-06',
+            'outbound_calls' => 0, 'inbound_calls' => 0, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $this->actingAs($this->agent)->get('/dashboard')->assertSuccessful();
+    }
+
+    public function test_filing_a_report_ends_a_forgotten_session_at_end_of_day(): void
+    {
+        $session = AttendanceSession::create([
+            'user_id' => $this->agent->id,
+            'work_date' => '2026-10-05',
+            'checked_in_at' => '2026-10-05 06:08:12',
+            'checked_out_at' => null,
+            'auto_closed_at' => '2026-10-06 03:00:00',
+            'close_reason' => AttendanceSession::REASON_AUTO,
+        ]);
+
+        app(\App\Services\Attendance\AttendanceService::class)->finalizeForgotten($this->agent);
+
+        $session->refresh();
+        // 11:59 pm in Dhaka on the day itself
+        $this->assertSame('2026-10-05 23:59', $session->checked_out_at->copy()->timezone('Asia/Dhaka')->format('Y-m-d H:i'));
+        $this->assertSame(AttendanceSession::REASON_AUTO, $session->close_reason);
+
+        $row = app(\App\Services\Attendance\AttendanceService::class)->sessions('2026-10-01', '2026-10-31', $this->agent->id, false)['rows'][0];
+        $this->assertSame('incomplete', $row['status']);
+        $this->assertNull($row['minutes']);
+    }
+
     public function test_field_user_checks_in_and_out(): void
     {
         $this->actingAs($this->agent)->postJson('/attendance/check-in', ['lat' => 23.78, 'lng' => 90.41, 'accuracy' => 12])
@@ -241,6 +286,27 @@ class CheckInTest extends TestCase
         $this->assertArrayNotHasKey('in_location', $own);
     }
 
+    public function test_several_sessions_of_a_day_show_as_one_row_with_first_in_and_last_out(): void
+    {
+        $this->travelTo(now()->setTime(9, 0));
+        $this->actingAs($this->agent)->postJson('/attendance/check-in');
+        $this->travelTo(now()->setTime(10, 0));
+        $this->actingAs($this->agent)->postJson('/attendance/check-out');
+        $this->travelTo(now()->setTime(11, 0));
+        $this->actingAs($this->agent)->postJson('/attendance/check-in');
+        $this->travelTo(now()->setTime(12, 30));
+        $this->actingAs($this->agent)->postJson('/attendance/check-out');
+
+        $rows = $this->actingAs($this->agent)->getJson('/attendance?preset=today', ['X-Requested-With' => 'XMLHttpRequest'])
+            ->assertJsonCount(1, 'check_ins.rows')
+            ->json('check_ins.rows');
+
+        $this->assertSame(2, $rows[0]['sessions']);
+        $this->assertSame(150, $rows[0]['minutes']);
+        $this->assertSame('completed', $rows[0]['status']);
+        $this->assertNotSame($rows[0]['checked_in'], $rows[0]['checked_out']);
+    }
+
     public function test_manager_corrects_a_forgotten_checkout(): void
     {
         $manager = User::factory()->create(['usages_sector' => 'corporate']);
@@ -299,37 +365,20 @@ class CheckInTest extends TestCase
         $this->actingAs($this->agent)->getJson('/attendance/status')->assertJsonPath('reminder', false);
     }
 
-    public function test_a_user_who_checked_in_without_a_report_must_file_it_next_time(): void
+    public function test_the_kpi_counts_checked_in_and_incomplete_days_without_changing_the_score(): void
     {
+        Carbon::setTestNow('2026-10-04 05:00:00');
         $this->actingAs($this->agent)->postJson('/attendance/check-in')->assertOk();
+        Carbon::setTestNow('2026-10-05 05:00:00');
+        $this->actingAs($this->agent)->postJson('/attendance/check-out');
+        $this->actingAs($this->agent)->postJson('/attendance/check-in')->assertOk();
+        Carbon::setTestNow('2026-10-06 04:00:00');
+        $this->artisan('attendance:auto-close');
 
-        // the same day there is nothing to file yet
-        $this->actingAs($this->agent)->get('/dashboard')->assertOk();
+        $row = app(\App\Services\Kpi\EmployeeKpiService::class)->forUsers(collect([$this->agent]), '2026-10-01', '2026-10-06')->first();
 
-        // the next day every page sends the user to the report of the day they checked in on
-        Carbon::setTestNow('2026-10-07 04:00:00');
-        $this->actingAs($this->agent)->get('/dashboard')
-            ->assertRedirect(route('daily-reports.create', ['date' => '2026-10-06']));
-
-        // the report form itself, and ajax calls, are never held back
-        $this->actingAs($this->agent)->get('/daily-reports/create?date=2026-10-06')->assertOk()->assertSee('without submitting a daily report');
-        $this->actingAs($this->agent)->getJson('/attendance/status')->assertOk();
-
-        // once the report is filed the user goes on as normal
-        \DB::table('daily_reports')->insert(['user_id' => $this->agent->id, 'report_date' => '2026-10-06', 'created_at' => now(), 'updated_at' => now()]);
-        $this->actingAs($this->agent)->get('/dashboard')->assertOk();
-    }
-
-    public function test_the_oldest_missing_report_comes_first_and_corporate_users_are_never_held(): void
-    {
-        $this->actingAs($this->agent)->postJson('/attendance/check-in');
-        Carbon::setTestNow('2026-10-07 04:00:00');
-        $this->actingAs($this->agent)->postJson('/attendance/check-in');
-        Carbon::setTestNow('2026-10-08 04:00:00');
-
-        $this->assertSame(['2026-10-06', '2026-10-07'], app(\App\Services\Attendance\AttendanceService::class)->owedReportDates($this->agent));
-
-        $manager = User::factory()->create(['usages_sector' => 'corporate']);
-        $this->actingAs($manager)->get('/dashboard')->assertOk();
+        $this->assertSame(2, $row['checked_in_days']);
+        $this->assertSame(2, $row['incomplete_days']);
+        $this->assertNull($row['score']);
     }
 }

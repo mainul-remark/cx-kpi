@@ -9,16 +9,22 @@ use Illuminate\Support\Str;
 class SocialPlatformSeeder extends Seeder
 {
     /**
-     * Starter social platforms for the daily report form.
+     * Starter social platforms for the daily report form, each taking outbound calls, comments and message replies.
      */
     public function run(): void
     {
-        $platforms = ['Facebook', 'Instagram', 'Twitter', 'WhatsApp', 'TikTok', 'YouTube', 'LinkedIn'];
+        $platforms = ['Facebook', 'Instagram', 'WhatsApp', 'TikTok',];
 
         foreach ($platforms as $name) {
             SocialPlatform::query()->firstOrCreate(
                 ['slug' => Str::slug($name)],
-                ['name' => $name, 'active' => true]
+                [
+                    'name' => $name,
+                    'active' => true,
+                    'has_outbound_calls' => false,
+                    'has_comments' => true,
+                    'has_message_replies' => true,
+                ]
             );
         }
     }

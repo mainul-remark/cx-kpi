@@ -10,14 +10,18 @@ class DailyReportProjectCall extends Model
     protected $fillable = [
         'daily_report_id',
         'project_id',
-        'total_calls',
+        'inbound_calls',
+        'comments',
+        'message_replies',
         'note',
     ];
 
     protected function casts(): array
     {
         return [
-            'total_calls' => 'integer',
+            'inbound_calls'   => 'integer',
+            'comments'        => 'integer',
+            'message_replies' => 'integer',
         ];
     }
 

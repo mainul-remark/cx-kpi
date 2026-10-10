@@ -8,10 +8,10 @@ use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * A field user who checked in on an earlier day without filing that day's daily report is sent to the report form
- * for it, on whatever page they open, until every such report is filed.
+ * A field user who has checked in (and not checked out) or worked today is sent to the daily report form, on whatever
+ * page they open, until today's report is filed.
  */
-class RequireOwedDailyReport
+class RequireDailyReport
 {
     /** The routes the user needs to file the report, so they are never sent away from them. */
     private const EXEMPT = ['daily-reports.create', 'daily-reports.store', 'daily-reports.edit', 'daily-reports.update'];
@@ -31,18 +31,13 @@ class RequireOwedDailyReport
             || $request->expectsJson()
             || $request->ajax()
             || $request->routeIs(...self::EXEMPT)
+            || !$this->attendance->mustFileReport($user)
         ) {
             return $next($request);
         }
 
-        $owed = $this->attendance->owedReportDates($user);
-
-        if ($owed === []) {
-            return $next($request);
-        }
-
         return redirect()
-            ->route('daily-reports.create', ['date' => $owed[0]])
-            ->with('owed_report_dates', $owed);
+            ->route('daily-reports.create')
+            ->with('report_required', true);
     }
 }

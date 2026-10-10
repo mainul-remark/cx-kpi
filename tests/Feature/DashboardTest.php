@@ -56,7 +56,7 @@ class DashboardTest extends TestCase
 
         DailyTarget::setForUsers([$this->agent->id, $this->otherAgent->id], ['2026-10-05', '2026-10-06'], [
             'outbound_calls' => 50,
-            'platforms' => [['social_platform_id' => $this->platform->id, 'total_replies' => 10]],
+            'platforms' => [['social_platform_id' => $this->platform->id, 'comments' => 10]],
         ], $this->manager->id);
     }
 
@@ -106,9 +106,9 @@ class DashboardTest extends TestCase
         $this->assertCount(2, $users);
         $this->assertSame(2, $users['Agent One']['reports']);
         $this->assertSame(70, $users['Agent One']['outbound_calls']);
-        // 70 calls and 18 replies against targets of 100 and 20
-        $this->assertSame(120, $users['Agent One']['target_total']);
-        $this->assertEquals(73.3, $users['Agent One']['achievement_pct']);
+        // 70 calls against the target of 100, the approximate comment target of 20 is not scored
+        $this->assertSame(100, $users['Agent One']['target_total']);
+        $this->assertEquals(70, $users['Agent One']['achievement_pct']);
         $this->assertSame('Agent One', $response->json('users.0.name'));
     }
 
@@ -226,9 +226,9 @@ class DashboardTest extends TestCase
             'report_date' => $date,
             'outbound_calls' => $outbound,
             'inbound_calls' => 5,
-            'message_replies' => 8,
-            'platforms' => [['social_platform_id' => $this->platform->id, 'total_replies' => $replies]],
-            'projects' => [['project_id' => $this->project->id, 'total_calls' => $calls]],
+            'order_processing' => 0,
+            'platforms' => [['social_platform_id' => $this->platform->id, 'comments' => $replies]],
+            'projects' => [['project_id' => $this->project->id, 'inbound_calls' => $calls]],
         ]);
     }
 }

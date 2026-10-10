@@ -119,11 +119,6 @@ class User extends Authenticatable
         return $this->hasMany(DailyReport::class);
     }
 
-    public function workShift(): BelongsTo
-    {
-        return $this->belongsTo(WorkShift::class);
-    }
-
     public function attendanceSessions(): HasMany
     {
         return $this->hasMany(AttendanceSession::class);

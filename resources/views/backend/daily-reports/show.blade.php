@@ -57,14 +57,14 @@
                                     <td class="text-wrap">{{ $report->outbound_calls_note }}</td>
                                 </tr>
                                 <tr>
+                                    <td>Order Processing Calls</td>
+                                    <td>{{ $report->order_processing }}</td>
+                                    <td class="text-wrap">{{ $report->order_processing_note }}</td>
+                                </tr>
+                                <tr>
                                     <td>Inbound Calls</td>
                                     <td>{{ $report->inbound_calls }}</td>
                                     <td class="text-wrap">{{ $report->inbound_calls_note }}</td>
-                                </tr>
-                                <tr>
-                                    <td>Message Replies</td>
-                                    <td>{{ $report->message_replies }}</td>
-                                    <td class="text-wrap">{{ $report->message_replies_note }}</td>
                                 </tr>
                                 </tbody>
                             </table>
@@ -77,29 +77,37 @@
                 <div class="card">
                     <div class="card-header d-flex justify-content-between align-items-center border-bottom">
                         <h5 class="card-title mb-0">
-                            <i class="mdi mdi-comment-multiple-outline me-1"></i> Comment Replies by Social Platform
+                            <i class="mdi mdi-phone me-1"></i> By Project
                         </h5>
-                        <span class="badge text-bg-primary">Total: {{ $report->platformReplies->sum('total_replies') }}</span>
+                        <span>
+                            <span class="badge text-bg-primary">Outbound: {{ $report->projectCalls->sum('inbound_calls') }}</span>
+                            <span class="badge text-bg-primary">Comments: {{ $report->projectCalls->sum('comments') }}</span>
+                            <span class="badge text-bg-primary">Messages: {{ $report->projectCalls->sum('message_replies') }}</span>
+                        </span>
                     </div>
                     <div class="card-body">
-                        @if($report->platformReplies->isEmpty())
-                            <p class="text-muted mb-0">No platform data on this report.</p>
+                        @if($report->projectCalls->isEmpty())
+                            <p class="text-muted mb-0">No project data on this report.</p>
                         @else
                             <div class="table-responsive">
                                 <table class="table table-bordered align-middle w-100">
                                     <thead>
                                     <tr>
-                                        <th>Social Platform</th>
-                                        <th>Comment Replies</th>
+                                        <th>Project</th>
+                                        <th>Outbound Calls</th>
+                                        <th>Comments</th>
+                                        <th>Message Replies</th>
                                         <th>Note</th>
                                     </tr>
                                     </thead>
                                     <tbody>
-                                    @foreach($report->platformReplies->sortBy('socialPlatform.name') as $reply)
+                                    @foreach($report->projectCalls->sortBy('project.name') as $row)
                                         <tr>
-                                            <td>{{ $reply->socialPlatform?->name }}</td>
-                                            <td>{{ $reply->total_replies }}</td>
-                                            <td class="text-wrap">{{ $reply->note }}</td>
+                                            <td>{{ $row->project?->name }}</td>
+                                            <td>{{ $row->inbound_calls }}</td>
+                                            <td>{{ $row->comments }}</td>
+                                            <td>{{ $row->message_replies }}</td>
+                                            <td class="text-wrap">{{ $row->note }}</td>
                                         </tr>
                                     @endforeach
                                     </tbody>
@@ -114,29 +122,37 @@
                 <div class="card">
                     <div class="card-header d-flex justify-content-between align-items-center border-bottom">
                         <h5 class="card-title mb-0">
-                            <i class="mdi mdi-phone-outline me-1"></i> Calls by Project
+                            <i class="mdi mdi-comment-multiple-outline me-1"></i> By Social Platform
                         </h5>
-                        <span class="badge text-bg-primary">Total: {{ $report->projectCalls->sum('total_calls') }}</span>
+                        <span>
+                            <span class="badge text-bg-primary">Outbound: {{ $report->platformReplies->sum('inbound_calls') }}</span>
+                            <span class="badge text-bg-primary">Comments: {{ $report->platformReplies->sum('comments') }}</span>
+                            <span class="badge text-bg-primary">Messages: {{ $report->platformReplies->sum('message_replies') }}</span>
+                        </span>
                     </div>
                     <div class="card-body">
-                        @if($report->projectCalls->isEmpty())
-                            <p class="text-muted mb-0">No project data on this report.</p>
+                        @if($report->platformReplies->isEmpty())
+                            <p class="text-muted mb-0">No platform data on this report.</p>
                         @else
                             <div class="table-responsive">
                                 <table class="table table-bordered align-middle w-100">
                                     <thead>
                                     <tr>
-                                        <th>Project</th>
-                                        <th>Total Calls</th>
+                                        <th>Social Platform</th>
+                                        <th>Outbound Calls</th>
+                                        <th>Comments</th>
+                                        <th>Message Replies</th>
                                         <th>Note</th>
                                     </tr>
                                     </thead>
                                     <tbody>
-                                    @foreach($report->projectCalls->sortBy('project.name') as $call)
+                                    @foreach($report->platformReplies->sortBy('socialPlatform.name') as $row)
                                         <tr>
-                                            <td>{{ $call->project?->name }}</td>
-                                            <td>{{ $call->total_calls }}</td>
-                                            <td class="text-wrap">{{ $call->note }}</td>
+                                            <td>{{ $row->socialPlatform?->name }}</td>
+                                            <td>{{ $row->inbound_calls }}</td>
+                                            <td>{{ $row->comments }}</td>
+                                            <td>{{ $row->message_replies }}</td>
+                                            <td class="text-wrap">{{ $row->note }}</td>
                                         </tr>
                                     @endforeach
                                     </tbody>
