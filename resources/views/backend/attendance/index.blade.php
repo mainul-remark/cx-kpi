@@ -98,7 +98,7 @@
                         </div>
                         <div class="card-body">
                             <p class="text-muted mb-3">
-                                A user is present on a day they submitted a daily report for. A day of official leave counts as neither present nor absent.
+                                A user is present on a day they submitted a daily report for or checked in on. A day of official leave counts as neither present nor absent.
                                 <span class="att-key att-P">P</span> Present
                                 <span class="att-key att-A">A</span> Absent
                                 <span class="att-key att-L">L</span> On leave
@@ -121,11 +121,77 @@
                     </div>
                 </div>
             </div>
+
+            <div class="row">
+                <div class="col-xl-12">
+                    <div class="card">
+                        <div class="card-header border-bottom">
+                            <h5 class="card-title mb-0"><i class="mdi mdi-clock-check-outline me-1"></i> Check-in Log</h5>
+                        </div>
+                        <div class="card-body">
+                            @if($canViewAll)
+                                <div class="mb-3" id="checkInsNow"></div>
+                            @endif
+                            <div class="table-responsive">
+                                <table class="table table-bordered text-nowrap align-middle mb-0" id="checkInsTable">
+                                    <thead>
+                                        <tr>
+                                            <th>Date</th>
+                                            @if($canViewAll)<th>Field User</th>@endif
+                                            <th>Check In</th>
+                                            <th>Check Out</th>
+                                            <th>Hours</th>
+                                            <th>Status</th>
+                                            @if($canViewAll)<th>Location</th><th></th>@endif
+                                        </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                            <p class="text-muted small mt-2 mb-0 d-none" id="checkInsTruncated">Only the latest check-ins of this range are listed. Narrow the range or pick a user to see the rest.</p>
+                            <p class="text-muted small mt-2 mb-0">A daily report or a check-in makes a user present, so a day with a report and no check-in is still present. A user who checked in on a day without a report must file that report at their next login.</p>
+                            <p class="text-muted small mt-1 mb-0">An incomplete session was not ended by the user and was closed automatically at midnight, so its hours are unknown.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
     </div>
 @endsection
 
+@if($canViewAll)
+    @section('modal')
+        <div class="modal fade" id="adjustModal" tabindex="-1" aria-labelledby="adjustModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <form class="modal-content" id="adjustForm" autocomplete="off">
+                    <div class="modal-header">
+                        <h6 class="modal-title" id="adjustModalLabel">Correct Check Out</h6>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="text-muted mb-3" id="adjustSummary"></p>
+                        <div class="mb-3">
+                            <label class="form-label" for="adjust_checked_out_at">Check Out Time</label>
+                            <input type="datetime-local" class="form-control" id="adjust_checked_out_at" required>
+                        </div>
+                        <div class="mb-1">
+                            <label class="form-label" for="adjust_note">Reason</label>
+                            <textarea class="form-control" id="adjust_note" rows="2" maxlength="500" required></textarea>
+                        </div>
+                        <div class="text-danger mt-2 d-none" id="adjustError" role="alert"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary btn-sm" id="adjustSave">Save</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    @endsection
+@endif
+
 @push('scripts')
+    @include('backend.attendance.partials.check-ins-script')
     @include('backend.attendance.partials.script')
 @endpush

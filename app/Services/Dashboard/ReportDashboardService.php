@@ -2,6 +2,7 @@
 
 namespace App\Services\Dashboard;
 
+use App\Models\AttendanceSession;
 use App\Models\Holiday;
 use App\Models\User;
 use App\Models\UserLeave;
@@ -171,9 +172,26 @@ class ReportDashboardService
                 $reported[$report->user_id][substr((string) $report->report_date, 0, 10)] = true;
             });
 
+        // A user is present on a day they reported or checked in on, so either one is enough. A check-in without
+        // a report is made up for by the daily report the user is made to file at their next login.
+        $checkedIn = $incomplete = [];
+        AttendanceSession::query()
+            ->whereBetween('work_date', [$from, $to.' 23:59:59'])
+            ->whereIn('user_id', $users->modelKeys())
+            ->get(['user_id', 'work_date', 'close_reason'])
+            ->each(function (AttendanceSession $session) use (&$reported, &$checkedIn, &$incomplete) {
+                $date = $session->work_date->toDateString();
+                $reported[$session->user_id][$date] = true;
+                $checkedIn[$session->user_id][$date] = true;
+
+                if ($session->close_reason === AttendanceSession::REASON_AUTO) {
+                    $incomplete[$session->user_id][$date] = true;
+                }
+            });
+
         $leaves = UserLeave::portionsByUser($from, $to, $users->modelKeys());
 
-        $rows = $users->map(function (User $user) use ($days, $reported, $leaves) {
+        $rows = $users->map(function (User $user) use ($days, $reported, $leaves, $checkedIn, $incomplete) {
             $joined = $user->created_at?->toDateString();
             $marks = '';
             $present = $absent = $leave = 0;
@@ -203,6 +221,8 @@ class ReportDashboardService
                 'present' => $present,
                 'absent' => $absent,
                 'leave' => $leave,
+                'checked_in' => count($checkedIn[$user->id] ?? []),
+                'incomplete' => count($incomplete[$user->id] ?? []),
                 'pct' => $present + $absent > 0 ? round($present / ($present + $absent) * 100, 1) : null,
             ];
         });

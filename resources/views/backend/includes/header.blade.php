@@ -114,6 +114,10 @@
 {{--            </div>--}}
             <!-- End::header-element -->
 
+            @if(auth()->user()?->usages_sector === 'field')
+                @include('backend.includes.check-in')
+            @endif
+
             <!-- Start::header-element -->
             <div class="header-element header-theme-mode">
                 <!-- Start::header-link|layout-setting -->

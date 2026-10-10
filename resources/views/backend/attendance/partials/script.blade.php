@@ -192,6 +192,7 @@
 
         function render(data) {
             lastData = data;
+            window.renderCheckIns(data);
 
             $('#attendanceRangeText').text(data.range.from === data.range.to
                 ? formatDate(data.range.from)

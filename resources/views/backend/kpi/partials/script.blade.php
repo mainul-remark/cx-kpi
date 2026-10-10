@@ -109,7 +109,10 @@
                     ? summary.scored + ' of ' + summary.users + ' users with a target'
                     : 'KPI capped at ' + @json(\App\Services\Kpi\EmployeeKpiService::MAX_SCORE)) +
                 tile('Absent Days', number(summary.absent), 'working days without a report') +
-                tile('Leave Days', number(summary.leave), 'official leave, not counted')
+                tile('Leave Days', number(summary.leave), 'official leave, not counted') +
+                (summary.late_days !== undefined
+                    ? tile('Late Check-ins', number(summary.late_days), number(summary.incomplete_days) + ' without a check out')
+                    : '')
             );
         }
 
@@ -232,6 +235,11 @@
                     '<div><div class="text-muted">Days Worked</div><div class="fs-5 fw-semibold">' + number(user.worked) + '</div></div>' +
                     '<div><div class="text-muted">Absent</div><div class="fs-5 fw-semibold">' + number(user.absent) + '</div></div>' +
                     '<div><div class="text-muted">Leave</div><div class="fs-5 fw-semibold">' + number(user.leave) + '</div></div>' +
+                    (user.late_days !== undefined
+                        ? '<div><div class="text-muted">Checked In</div><div class="fs-5 fw-semibold">' + number(user.checked_in_days) + '</div></div>' +
+                          '<div><div class="text-muted">Late</div><div class="fs-5 fw-semibold">' + number(user.late_days) + '</div></div>' +
+                          '<div><div class="text-muted">No Check Out</div><div class="fs-5 fw-semibold">' + number(user.incomplete_days) + '</div></div>'
+                        : '') +
                 '</div>' +
                 '<h6>By Activity</h6>' +
                 '<div class="table-responsive mb-3"><table class="table table-bordered table-sm align-middle mb-0"><thead><tr>' +

@@ -42,6 +42,13 @@
                             </h5>
                         </div>
                         <div class="card-body">
+                            @if(session('owed_report_dates'))
+                                <div class="alert alert-warning" role="alert">
+                                    You checked in on {{ collect(session('owed_report_dates'))->map(fn ($day) => \Illuminate\Support\Carbon::parse($day)->format('d M Y'))->join(', ', ' and ') }}
+                                    without submitting a daily report. Please file {{ count(session('owed_report_dates')) > 1 ? 'those reports' : 'that report' }} to continue.
+                                </div>
+                            @endif
+
                             @if($report && !$isEdit)
                                 <div class="alert alert-info" role="alert">
                                     You have already submitted a report for this date. Saving will update it.
