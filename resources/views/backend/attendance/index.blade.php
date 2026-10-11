@@ -148,7 +148,12 @@
                                     <tbody></tbody>
                                 </table>
                             </div>
-                            <p class="text-muted small mt-2 mb-0 d-none" id="checkInsTruncated">Only the latest check-ins of this range are listed. Narrow the range or pick a user to see the rest.</p>
+                            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3 d-none" id="checkInsPager">
+                                <div class="text-muted att-pager-info"></div>
+                                <nav aria-label="Check-in log pages">
+                                    <ul class="pagination pagination-sm mb-0"></ul>
+                                </nav>
+                            </div>
                             <p class="text-muted small mt-2 mb-0">A daily report or a check-in makes a user present, so a day with a report and no check-in is still present. A user who checked in on a day without a report must file that report at their next login.</p>
                             <p class="text-muted small mt-1 mb-0">An incomplete session was not ended by the user and was closed automatically at midnight, so its hours are unknown.</p>
                         </div>
@@ -166,11 +171,15 @@
             <div class="modal-dialog">
                 <form class="modal-content" id="adjustForm" autocomplete="off">
                     <div class="modal-header">
-                        <h6 class="modal-title" id="adjustModalLabel">Correct Check Out</h6>
+                        <h6 class="modal-title" id="adjustModalLabel">Correct Check In / Out</h6>
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
                     <div class="modal-body">
                         <p class="text-muted mb-3" id="adjustSummary"></p>
+                        <div class="mb-3">
+                            <label class="form-label" for="adjust_checked_in_at">Check In Time</label>
+                            <input type="datetime-local" class="form-control" id="adjust_checked_in_at" required>
+                        </div>
                         <div class="mb-3">
                             <label class="form-label" for="adjust_checked_out_at">Check Out Time</label>
                             <input type="datetime-local" class="form-control" id="adjust_checked_out_at" required>

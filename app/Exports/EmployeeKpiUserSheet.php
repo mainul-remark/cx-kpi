@@ -9,12 +9,15 @@ use Maatwebsite\Excel\Concerns\WithTitle;
 use Maatwebsite\Excel\Events\AfterSheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Style\Conditional;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 
 /**
  * The tab of one user on the KPI workbook: a heading row, a line per activity and the total score.
  *
  * A zero is kept as a figure, so an activity nothing was reported for does not look left out.
+ * Achievement, weighted score and the totals are formulas over the target, the actual result and the weight,
+ * so the figures an admin edits afterwards (a weight, an actual) carry through to the total.
  */
 class EmployeeKpiUserSheet implements FromArray, WithTitle, WithEvents, WithStrictNullComparison
 {
@@ -67,7 +70,12 @@ class EmployeeKpiUserSheet implements FromArray, WithTitle, WithEvents, WithStri
             return $rows;
         }
 
+        $count = count($this->lines);
+
         foreach ($this->lines as $index => $line) {
+            $row = $index + 2;
+
+            // achievement and score are formulas, so an admin changing a weight or a figure sees the total follow
             $rows[] = [
                 // the name and the position are written once and merged over the user's lines
                 $index === 0 ? $name : null,
@@ -75,14 +83,14 @@ class EmployeeKpiUserSheet implements FromArray, WithTitle, WithEvents, WithStri
                 self::text($line['title']),
                 $line['target'],
                 $line['actual'],
-                $line['achievement'],
+                "=IF(D{$row}=0,0,MIN(E{$row}/D{$row},1))",
                 $line['weight'],
-                $line['score'],
+                "=F{$row}*G{$row}*100",
                 $this->frequency,
             ];
         }
 
-        $rows[] = [null, null, 'Total Score', null, null, null, 1, round(array_sum(array_column($this->lines, 'score')), 2), null];
+        $rows[] = [null, null, 'Total Score', null, null, null, "=SUM(G2:G".($count + 1).')', "=ROUND(SUM(H2:H".($count + 1).'),2)', null];
 
         return $rows;
     }
@@ -126,6 +134,17 @@ class EmployeeKpiUserSheet implements FromArray, WithTitle, WithEvents, WithStri
                 $sheet->getStyle('D2:E'.$last)->getNumberFormat()->setFormatCode('#,##0');
                 $sheet->getStyle('F2:F'.$last)->getNumberFormat()->setFormatCode('0.00%');
                 $sheet->getStyle('G2:G'.$last)->getNumberFormat()->setFormatCode('0%');
+                // the weights are for the admin to adjust, and have to add up to 100%
+                if ($lines > 0) {
+                    $sheet->getStyle('G2:G'.($last - 1))->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('FFFBEA');
+                    $check = $sheet->getConditionalStyles('G'.$last);
+                    $rule = new Conditional();
+                    $rule->setConditionType(Conditional::CONDITION_EXPRESSION)
+                        ->addCondition('ROUND(G'.$last.',4)<>1')
+                        ->getStyle()->getFont()->getColor()->setRGB('FF0000');
+                    $check[] = $rule;
+                    $sheet->getStyle('G'.$last)->setConditionalStyles($check);
+                }
                 $sheet->getStyle('H2:H'.$last)->getNumberFormat()->setFormatCode('0.00');
                 $sheet->getStyle('D2:I'.$last)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 

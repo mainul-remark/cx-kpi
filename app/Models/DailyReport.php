@@ -85,8 +85,8 @@ class DailyReport extends Model
             $report->syncRows('platformReplies', 'social_platform_id', SocialPlatform::class, $data['platforms'] ?? []);
             $report->syncRows('projectCalls', 'project_id', Project::class, $data['projects'] ?? []);
 
-            // the days the user forgot to check out on are ended at 11:59 pm, still marked as not checked out
-            app(\App\Services\Attendance\AttendanceService::class)->finalizeForgotten($user);
+            // a day the user forgot to check out on is ended at 11:59 pm, still marked as not checked out
+            app(\App\Services\Attendance\AttendanceService::class)->finalizeForgotten($report->user_id === $user->id ? $user : $report->user, $report->report_date->toDateString());
 
             return $report->load(['platformReplies.socialPlatform', 'projectCalls.project']);
         });

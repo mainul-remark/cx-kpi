@@ -59,7 +59,7 @@
                         <div class="card-body">
                             @if(session('report_required'))
                                 <div class="alert alert-warning" role="alert">
-                                    You are checked in. Please submit today's daily report to continue using the system.
+                                    You checked in on {{ \Illuminate\Support\Carbon::parse($date)->format('d M Y') }} without submitting a daily report. Please submit it to continue using the system.
                                 </div>
                             @endif
 

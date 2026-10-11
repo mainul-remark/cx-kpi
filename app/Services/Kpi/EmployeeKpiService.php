@@ -4,10 +4,12 @@ namespace App\Services\Kpi;
 
 use App\Models\AttendanceSession;
 use App\Models\Holiday;
+use App\Models\PeriodTarget;
 use App\Models\User;
 use App\Models\UserLeave;
 use App\Services\Dashboard\ReportDashboardService;
 use Carbon\CarbonPeriod;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -17,11 +19,13 @@ use Illuminate\Support\Facades\DB;
  * Reports and targets are matched day by day and activity by activity, then summed and divided once,
  * so a busy day weighs more than a light one. Only the activities with a target on a day count,
  * and a day of official leave, an off day or a day without a target counts for nothing either way.
- * Each activity counts by its weight from config/kpi.php, the totals shown stay plain counts.
+ * The outbound calls (outbound and order processing calls reported, against the outbound call target) carry a fixed
+ * share of the score, kpi.outbound_share, or all of it when nothing else has a target. The other activities with a
+ * target split the rest equally, and each counts for no more than its share however far above target it went.
+ * The target and actual totals and the percent next to them are those of the activities weighted in config/kpi.php.
  *
- * The outbound calls are the scored activity: the outbound and order processing calls reported are added up and
- * compared with the outbound call target. Inbound calls, comments and message replies have approximate targets
- * only, they are listed with their figures but weigh nothing in the score.
+ * Targets are either set day by day, or for a month at a time (kpi.target_mode), which is then
+ * prorated to the days of the range the user was asked for.
  */
 class EmployeeKpiService
 {
@@ -105,20 +109,28 @@ class EmployeeKpiService
         $userIds = $users->map(fn (User $user) => $user->id)->all();
         $hasDays = $from <= $until && !empty($userIds);
 
+        $periodMode = config('kpi.target_mode') === 'period';
+
         $working = $hasDays ? array_flip(Holiday::workingDays($from, $until)) : [];
-        $targets = $hasDays ? $this->figures('target', $from, $until, $userIds) : [];
+        // in period mode a target covers a month, so each day of it is worth a share of that month's target
+        $targets = $hasDays && !$periodMode ? $this->figures('target', $from, $until, $userIds) : [];
+        $monthly = $hasDays && $periodMode ? PeriodTarget::forRange($from, $until, $userIds) : [];
+        $monthDays = $hasDays && $periodMode ? $this->workingDaysPerMonth($from, $until) : [];
         $reports = $hasDays ? $this->figures('report', $from, $until, $userIds) : [];
         $leaves = $hasDays ? UserLeave::portionsByUser($from, $until, $userIds) : [];
         $punctuality = $hasDays ? $this->punctuality($from, $until, $userIds) : [];
         $dates = $hasDays ? array_map(fn ($day) => $day->toDateString(), CarbonPeriod::create($from, $until)->toArray()) : [];
 
         $weights = array_map('floatval', (array) config('kpi.weights', []));
+        $outboundShare = (float) config('kpi.outbound_share', 70);
 
-        return $users->mapWithKeys(function (User $user) use ($dates, $working, $targets, $reports, $leaves, $weights, $withDays, $punctuality) {
+        return $users->mapWithKeys(function (User $user) use ($dates, $working, $targets, $monthly, $monthDays, $periodMode, $reports, $leaves, $weights, $outboundShare, $withDays, $punctuality) {
             $joined = $user->created_at?->toDateString();
             $breakdown = array_fill_keys(array_keys(ReportDashboardService::METRICS), ['target' => null, 'actual' => 0]);
             // the same figures per activity, where each platform and each project stands on its own
             $activities = [];
+            // period mode only: the days of each month the user was asked for, and what was reported on them
+            $eligible = $reportedOnEligible = [];
             $targetTotal = $actualTotal = $targetDays = $worked = $absent = 0;
             $weightedTarget = $weightedActual = $leave = 0.0;
             $days = [];
@@ -142,6 +154,24 @@ class EmployeeKpiService
                     $day['status'] = $done !== null ? 'worked' : 'absent';
                     $worked += $done !== null ? 1 : 0;
                     $absent += $done !== null ? 0 : 1;
+
+                    if ($periodMode) {
+                        $month = substr($date, 0, 7).'-01';
+                        $eligible[$month] = ($eligible[$month] ?? 0) + ($half ? 0.5 : 1);
+
+                        foreach ($done ?? [] as $activity => $count) {
+                            $reportedOnEligible[$activity] = ($reportedOnEligible[$activity] ?? 0) + $count;
+                        }
+
+                        // there is no target of a day to show, only what was reported on it
+                        if ($done !== null) {
+                            $day['actual'] = (int) array_sum(array_map(
+                                fn (string $activity, int $count) => ($weights[self::metricOf($activity)] ?? 1.0) > 0 ? $count : 0,
+                                array_keys($done),
+                                $done
+                            ));
+                        }
+                    }
 
                     $goals = $targets[$user->id][$date] ?? [];
 
@@ -195,7 +225,51 @@ class EmployeeKpiService
                 $days[] = $day;
             }
 
+            if ($periodMode) {
+                // each month's target comes down to the days of it the user was asked for
+                $periodTargets = [];
+
+                foreach ($monthly[$user->id] ?? [] as $month => $goals) {
+                    $base = $monthDays[$month] ?? 0;
+
+                    if ($base <= 0 || empty($eligible[$month])) {
+                        continue;
+                    }
+
+                    foreach ($goals as $activity => $goal) {
+                        $periodTargets[$activity] = ($periodTargets[$activity] ?? 0) + $goal * $eligible[$month] / $base;
+                    }
+                }
+
+                foreach ($periodTargets as $activity => $goal) {
+                    $goal = (int) round($goal);
+                    $count = $reportedOnEligible[$activity] ?? 0;
+                    $metric = self::metricOf($activity);
+                    $weight = $weights[$metric] ?? 1.0;
+
+                    if ($goal <= 0) {
+                        continue;
+                    }
+
+                    if (isset($breakdown[$metric])) {
+                        $breakdown[$metric]['target'] += $goal;
+                        $breakdown[$metric]['actual'] += $count;
+                    }
+                    $activities[$activity] = ['metric' => $metric, 'target' => $goal, 'actual' => $count];
+
+                    if ($weight > 0) {
+                        $targetTotal += $goal;
+                        $actualTotal += $count;
+                        $weightedTarget += $goal * $weight;
+                        $weightedActual += $count * $weight;
+                        $targetDays = (int) ceil(array_sum($eligible));
+                    }
+                }
+            }
+
             $pct = self::pct($weightedActual, $weightedTarget);
+            $lines = self::lines($activities, $outboundShare);
+            $score = $lines === [] ? null : min(round(array_sum(array_column($lines, 'score')), 1), (float) self::MAX_SCORE);
 
             $row = [
                 'id' => $user->id,
@@ -206,7 +280,9 @@ class EmployeeKpiService
                 'weighted_target' => $weightedTarget,
                 'weighted_actual' => $weightedActual,
                 'pct' => $pct,
-                'score' => $pct === null ? null : min($pct, (float) self::MAX_SCORE),
+                'score' => $score,
+                // every activity with a target, with the share of the score it carries and what it earned of it
+                'lines' => $lines,
                 'target_days' => $targetDays,
                 'worked' => $worked,
                 'absent' => $absent,
@@ -233,6 +309,72 @@ class EmployeeKpiService
 
             return [$user->id => $row];
         });
+    }
+
+    /**
+     * What each activity with a target carries of the score and earned of it.
+     *
+     * The outbound calls take the configured share, or all of it when nothing else has a target, and the other
+     * activities split the rest equally (in whole percents, the odd percents going to the first ones). With no
+     * outbound calls target they split the whole. An activity is judged against its own target and counts for
+     * no more than its share however far above target it went.
+     *
+     * @param  array<string, array{metric: string, target: int, actual: int}>  $activities
+     * @return array<string, array{metric: string, target: int, actual: int, achievement: float, weight: float, score: float}>
+     */
+    public static function lines(array $activities, float $outboundShare): array
+    {
+        $lines = array_filter($activities, fn (array $activity) => $activity['target'] > 0);
+
+        if ($lines === []) {
+            return [];
+        }
+
+        $hasOutbound = isset($lines['outbound_calls']);
+        $others = count($lines) - ($hasOutbound ? 1 : 0);
+        $outbound = $hasOutbound ? ($others > 0 ? (int) max(0, min(100, round($outboundShare))) : 100) : 0;
+        $rest = 100 - $outbound;
+        $each = $others > 0 ? intdiv($rest, $others) : 0;
+        $extra = $others > 0 ? $rest % $others : 0;
+        $position = 0;
+
+        foreach ($lines as $key => $activity) {
+            if ($key === 'outbound_calls') {
+                $percent = $outbound;
+            } else {
+                $percent = $each + ($position < $extra ? 1 : 0);
+                $position++;
+            }
+
+            $achievement = min($activity['actual'] / $activity['target'], 1.0);
+
+            $lines[$key] = $activity + [
+                'achievement' => $achievement,
+                'weight' => $percent / 100,
+                'score' => $achievement * $percent,
+            ];
+        }
+
+        return $lines;
+    }
+
+    /**
+     * The working days of each month a range touches, whole months, as a count per Y-m-01 month.
+     *
+     * @return array<string, int>
+     */
+    private function workingDaysPerMonth(string $from, string $to): array
+    {
+        $months = [];
+        $month = Carbon::parse($from)->startOfMonth();
+        $last = Carbon::parse($to)->startOfMonth();
+
+        while ($month->lte($last)) {
+            $months[$month->toDateString()] = count(Holiday::workingDays($month->toDateString(), $month->copy()->endOfMonth()->toDateString()));
+            $month->addMonthNoOverflow();
+        }
+
+        return $months;
     }
 
     /**
@@ -281,6 +423,7 @@ class EmployeeKpiService
         $row['target_total'] = $row['weighted_target'] = $row['weighted_actual'] = null;
         $row['breakdown'] = array_map(fn (array $figures) => ['target' => null] + $figures, $row['breakdown']);
         $row['activities'] = array_map(fn (array $figures) => ['target' => null] + $figures, $row['activities']);
+        $row['lines'] = array_map(fn (array $line) => ['target' => null] + $line, $row['lines']);
 
         if (isset($row['days'])) {
             $row['days'] = array_map(fn (array $day) => ['target' => null] + $day, $row['days']);

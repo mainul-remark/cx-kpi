@@ -2,16 +2,19 @@
 
 namespace App\Http\Controllers;
 
-use App\Exports\EmployeeKpiExport;
+use App\HelperFiles\HelperFile;
+use App\Jobs\GenerateKpiExport;
 use App\Models\KpiSnapshot;
 use App\Models\User;
 use App\Services\Dashboard\ReportDashboardService;
 use App\Services\Kpi\EmployeeKpiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
-use Maatwebsite\Excel\Facades\Excel;
 
 class EmployeeKpiController extends Controller
 {
@@ -73,19 +76,86 @@ class EmployeeKpiController extends Controller
     }
 
     /**
-     * Download the KPI sheet of a range as an Excel workbook, with one tab per user.
+     * The Excel workbook of the KPI sheet of a range, with one tab per user, built in the background.
+     *
+     * One action for the three steps, so the permission to export covers all of them:
+     *  - without a token the export is queued and its token returned,
+     *  - with a token its progress is returned,
+     *  - with a token and download=1 the finished file is sent and removed from the disk.
      */
-    public function export(Request $request, ReportDashboardService $reports, EmployeeKpiService $kpi)
+    public function export(Request $request, ReportDashboardService $reports)
     {
         // the workbook is built around the targets, which a field user is not shown
         abort_unless($this->canViewAll($request), 403);
 
+        $token = $request->query('token');
+
+        if (is_string($token) && $token !== '') {
+            return $request->boolean('download') ? $this->exportDownload($request, $token) : $this->exportStatus($request, $token);
+        }
+
         [$from, $to, $userId] = $this->filters($request, $reports);
 
-        // without a period in the request the sheet is this month's, as on the page
-        $preset = $request->input('preset', 'month');
+        $token = (string) Str::uuid();
 
-        return Excel::download(new EmployeeKpiExport($kpi->sheet($from, $to, $userId), $from, $to, $preset), 'kpi-sheet_'.$from.'_to_'.$to.'.xlsx');
+        Cache::put(GenerateKpiExport::cacheKey($token), [
+            'status' => 'pending',
+            'user_id' => $request->user()->id,
+        ], now()->addMinutes(GenerateKpiExport::TTL_MINUTES));
+
+        // without a period in the request the sheet is this month's, as on the page
+        GenerateKpiExport::dispatch($token, $request->user()->id, $from, $to, $userId, $request->input('preset', 'month'));
+
+        // there is no worker running all the time on every installation, so make sure one picks the job up
+        if (config('queue.default') !== 'sync') {
+            HelperFile::startQueueWorker();
+        }
+
+        return response()->json(['token' => $token], 202);
+    }
+
+    private function exportStatus(Request $request, string $token)
+    {
+        $export = $this->ownExport($request, $token);
+
+        if ($export['status'] === 'done' && !Storage::disk('local')->exists($export['file'])) {
+            return response()->json(['status' => 'expired']);
+        }
+
+        return response()->json(array_filter([
+            'status' => $export['status'],
+            'message' => $export['message'] ?? null,
+        ]));
+    }
+
+    private function exportDownload(Request $request, string $token)
+    {
+        $export = $this->ownExport($request, $token);
+
+        abort_unless($export['status'] === 'done' && Storage::disk('local')->exists($export['file']), 404);
+
+        // a file is handed over once, and removed from the disk as soon as it has been sent
+        Cache::forget(GenerateKpiExport::cacheKey($token));
+
+        return response()
+            ->download(Storage::disk('local')->path($export['file']), $export['name'], [
+                'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            ])
+            ->deleteFileAfterSend(true);
+    }
+
+    /**
+     * The outcome of a queued export of the user, a 404 for one that is unknown, expired or someone else's.
+     *
+     * @return array<string, mixed>
+     */
+    private function ownExport(Request $request, string $token): array
+    {
+        $export = Cache::get(GenerateKpiExport::cacheKey($token));
+
+        abort_unless(is_array($export) && (int) ($export['user_id'] ?? 0) === (int) $request->user()->id, 404);
+
+        return $export;
     }
 
     /**

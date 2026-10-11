@@ -5,10 +5,19 @@
         'outbound_calls' => ['label' => 'Outbound Calls', 'required' => true],
         'inbound_calls' => ['label' => 'Inbound Calls (approximate)', 'required' => false],
     ];
+    $callColumns = ['inbound_calls' => 'Outbound Calls'];
+    $messageColumns = ['comments' => 'Comments', 'message_replies' => 'Message Replies'];
 @endphp
 @section('title', $pageTitle)
 @push('styles')
     <link rel="stylesheet" href="{{asset('backend/reza-custom/css/custom.css')}}"/>
+    <style>
+        /* the open tab reads white on its filled pill, whatever the theme sets for a link */
+        #targetTabs .nav-link.active,
+        #targetTabs .nav-link.active i {
+            color: #fff !important;
+        }
+    </style>
 @endpush
 
 @section('body')
@@ -90,7 +99,7 @@
 
                 <div class="col-xl-12">
                     <div class="card">
-                        <div class="card-header d-flex justify-content-between align-items-center border-bottom">
+                        <div class="card-header border-bottom">
                             <h5 class="card-title mb-0">
                                 <i class="mdi mdi-target me-1"></i> Daily Target
                             </h5>
@@ -101,68 +110,114 @@
                                 reported are added up and compared with it. Every other target is approximate and optional, it is shown for
                                 reference and does not change the KPI. Leave it empty to set none.
                             </p>
-                            <div class="table-responsive">
-                                <table class="table table-bordered align-middle w-100">
-                                    <thead>
-                                    <tr>
-                                        <th style="width: 50%">Activity</th>
-                                        <th>Target per Day</th>
-                                    </tr>
-                                    </thead>
-                                    <tbody>
-                                    @foreach($totals as $field => $config)
-                                        <tr>
-                                            <td>
-                                                <label class="mb-0" for="{{ $field }}">{{ $config['label'] }}</label>
-                                                @if($config['required'])<span class="text-danger">*</span>@endif
-                                            </td>
-                                            <td>
-                                                <input type="number" name="{{ $field }}" id="{{ $field }}" class="form-control" min="0" step="1" placeholder="{{ $config['required'] ? 'Required' : 'No target' }}" value="{{ $target?->{$field} }}">
-                                                <div class="invalid-feedback" data-error-for="{{ $field }}"></div>
-                                            </td>
-                                        </tr>
-                                    @endforeach
-                                    </tbody>
-                                </table>
+
+                            <ul class="nav nav-pills justify-content-center mb-4" id="targetTabs" role="tablist">
+                                <li class="nav-item" role="presentation">
+                                    <button type="button" class="nav-link active" id="calls-tab" data-bs-toggle="pill" data-bs-target="#calls-pane" role="tab" aria-controls="calls-pane" aria-selected="true">
+                                        <i class="mdi mdi-phone me-1"></i> Calls
+                                        <span class="badge text-bg-danger d-none" data-tab-errors="calls-pane"></span>
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button type="button" class="nav-link" id="messages-tab" data-bs-toggle="pill" data-bs-target="#messages-pane" role="tab" aria-controls="messages-pane" aria-selected="false">
+                                        <i class="mdi mdi-comment-multiple-outline me-1"></i> Comments + Message
+                                        <span class="badge text-bg-danger d-none" data-tab-errors="messages-pane"></span>
+                                    </button>
+                                </li>
+                            </ul>
+
+                            <div class="tab-content">
+                                <div class="tab-pane fade show active" id="calls-pane" role="tabpanel" aria-labelledby="calls-tab" tabindex="0">
+                                    <div class="table-responsive mb-4">
+                                        <table class="table table-bordered align-middle w-100">
+                                            <thead>
+                                            <tr>
+                                                <th style="width: 50%">Activity</th>
+                                                <th>Target per Day</th>
+                                            </tr>
+                                            </thead>
+                                            <tbody>
+                                            @foreach($totals as $field => $config)
+                                                <tr>
+                                                    <td>
+                                                        <label class="mb-0" for="{{ $field }}">{{ $config['label'] }}</label>
+                                                        @if($config['required'])<span class="text-danger">*</span>@endif
+                                                    </td>
+                                                    <td>
+                                                        <input type="number" name="{{ $field }}" id="{{ $field }}" class="form-control" min="0" step="1" placeholder="{{ $config['required'] ? 'Required' : 'No target' }}" value="{{ $target?->{$field} }}">
+                                                        <div class="invalid-feedback" data-error-for="{{ $field }}"></div>
+                                                    </td>
+                                                </tr>
+                                            @endforeach
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <h6 class="mb-2">Outbound Calls by Project</h6>
+                                            <div class="mb-4">
+                                                @include('backend.daily-targets.partials.rows', [
+                                                    'rows' => $projectRows,
+                                                    'group' => 'projects',
+                                                    'idField' => 'project_id',
+                                                    'columns' => $callColumns,
+                                                    'withId' => false,
+                                                    'nameHeading' => 'Project',
+                                                    'emptyText' => 'No active project takes outbound calls.',
+                                                ])
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <h6 class="mb-2">Outbound Calls by Social Platform</h6>
+                                            @include('backend.daily-targets.partials.rows', [
+                                                'rows' => $platformRows,
+                                                'group' => 'platforms',
+                                                'idField' => 'social_platform_id',
+                                                'columns' => $callColumns,
+                                                'withId' => false,
+                                                'nameHeading' => 'Social Platform',
+                                                'emptyText' => 'No active social platform takes outbound calls.',
+                                            ])
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="tab-pane fade" id="messages-pane" role="tabpanel" aria-labelledby="messages-tab" tabindex="0">
+                                    <h6 class="mb-2">By Project</h6>
+                                    <div class="mb-4">
+                                        @include('backend.daily-targets.partials.rows', [
+                                            'rows' => $projectRows,
+                                            'group' => 'projects',
+                                            'idField' => 'project_id',
+                                            'columns' => $messageColumns,
+                                            'withId' => false,
+                                            'nameHeading' => 'Project',
+                                            'emptyText' => 'No active project takes comments or messages.',
+                                        ])
+                                    </div>
+
+                                    <h6 class="mb-2">By Social Platform</h6>
+                                    @include('backend.daily-targets.partials.rows', [
+                                        'rows' => $platformRows,
+                                        'group' => 'platforms',
+                                        'idField' => 'social_platform_id',
+                                        'columns' => $messageColumns,
+                                        'withId' => false,
+                                        'nameHeading' => 'Social Platform',
+                                        'emptyText' => 'No active social platform takes comments or messages.',
+                                    ])
+                                </div>
                             </div>
-                        </div>
-                    </div>
-                </div>
 
-                <div class="col-xl-12">
-                    <div class="card">
-                        <div class="card-header border-bottom">
-                            <h5 class="card-title mb-0">
-                                <i class="mdi mdi-phone me-1"></i> Approximate Targets by Project
-                            </h5>
-                        </div>
-                        <div class="card-body">
-                            @include('backend.daily-targets.partials.rows', [
-                                'rows' => $projectRows,
-                                'group' => 'projects',
-                                'idField' => 'project_id',
-                                'nameHeading' => 'Project',
-                                'emptyText' => 'No active project takes calls, comments or messages.',
-                            ])
-                        </div>
-                    </div>
-                </div>
-
-                <div class="col-xl-12">
-                    <div class="card">
-                        <div class="card-header border-bottom">
-                            <h5 class="card-title mb-0">
-                                <i class="mdi mdi-comment-multiple-outline me-1"></i> Approximate Targets by Social Platform
-                            </h5>
-                        </div>
-                        <div class="card-body">
-                            @include('backend.daily-targets.partials.rows', [
-                                'rows' => $platformRows,
-                                'group' => 'platforms',
-                                'idField' => 'social_platform_id',
-                                'nameHeading' => 'Social Platform',
-                                'emptyText' => 'No active social platform takes calls, comments or messages.',
-                            ])
+                            {{-- the id of each row is posted once, whichever tab its inputs are in --}}
+                            @foreach(['projects' => ['project_id', $projectRows], 'platforms' => ['social_platform_id', $platformRows]] as $group => [$idField, $rows])
+                                @foreach($rows as $index => $row)
+                                    @if($row['inbound_calls'] || $row['comments'] || $row['message_replies'])
+                                        <input type="hidden" name="{{ $group }}[{{ $index }}][{{ $idField }}]" value="{{ $row['id'] }}">
+                                    @endif
+                                @endforeach
+                            @endforeach
                         </div>
                     </div>
                 </div>

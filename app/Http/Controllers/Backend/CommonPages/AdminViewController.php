@@ -3,33 +3,30 @@
 namespace App\Http\Controllers\Backend\CommonPages;
 
 use App\Http\Controllers\Controller;
-use App\Models\Asset;
-use App\Models\AssignAssetToBrand;
-use App\Models\AssignKvToAsset;
-use App\Models\Brand;
-use App\Models\PlanogramHistory;
-use App\Models\Store;
 use App\Models\User;
-use App\Models\UserStoreAssignment;
-use App\Models\VisualMerchandising;
+use App\Services\Dashboard\ReportDashboardService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
-use App\Services\Dashboard\ReportDashboardService;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
-use Mainul\CustomHelperFunctions\Helpers\CustomHelper;
 use Spatie\Activitylog\Models\Activity;
 use Uzzal\Acl\Models\Resource;
 
 class AdminViewController extends Controller
 {
     /**
-     * The report dashboard: the page itself, and its figures as JSON when asked for over ajax.
+     * The sections the dashboard draws from, each loaded on its own so a slow or failing one
+     * does not hold up the rest:
+     *  - overview (the default): figures, trend and breakdowns, summed by the database,
+     *  - people: one page of the users with their KPI score, sorted and searched on the server,
+     *  - attendance: the totals, daily presence and most missed reports of the team,
+     *  - live: where the team stands today, for corporate users.
      *
      * A corporate user sees everyone's data and the targets, a field user only their own reports.
      */
+    public const SECTIONS = ['overview', 'people', 'attendance', 'live'];
+
     public function dashboard(Request $request, ReportDashboardService $dashboard)
     {
         $user = $request->user();
@@ -45,10 +42,18 @@ class AdminViewController extends Controller
         }
 
         $filters = $request->validate([
+            'section' => ['nullable', Rule::in(self::SECTIONS)],
             'preset' => ['nullable', Rule::in(ReportDashboardService::PRESETS)],
             'from' => ['required_if:preset,custom', 'nullable', 'date_format:Y-m-d'],
             'to' => ['required_if:preset,custom', 'nullable', 'date_format:Y-m-d', 'after_or_equal:from'],
             'user_id' => ['nullable', 'integer'],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:5', 'max:100'],
+            'sort' => ['nullable', Rule::in(ReportDashboardService::PEOPLE_SORTS)],
+            'dir' => ['nullable', Rule::in(['asc', 'desc'])],
+            'search' => ['nullable', 'string', 'max:100'],
+            'export' => ['nullable', 'boolean'],
+            'refresh' => ['nullable', 'boolean'],
         ]);
 
         [$from, $to] = $dashboard->range($filters['preset'] ?? 'month', $filters['from'] ?? null, $filters['to'] ?? null);
@@ -61,10 +66,24 @@ class AdminViewController extends Controller
 
         // a field user is always held to their own data, whatever user the request names
         $userId = $canViewAll ? (isset($filters['user_id']) ? (int) $filters['user_id'] : null) : (int) $user->id;
+        $fresh = $request->boolean('refresh');
+        $range = ['from' => $from, 'to' => $to];
 
-        return response()->json($dashboard->build($from, $to, $userId, $canViewAll, $canViewAll));
+        return response()->json(match ($filters['section'] ?? 'overview') {
+            'people' => ['range' => $range] + $dashboard->people($from, $to, $userId, $canViewAll, [
+                'page' => $filters['page'] ?? 1,
+                'per_page' => $filters['per_page'] ?? null,
+                'sort' => $filters['sort'] ?? null,
+                'dir' => $filters['dir'] ?? null,
+                'search' => $filters['search'] ?? '',
+                'fresh' => $fresh,
+                'all' => $request->boolean('export'),
+            ]),
+            'attendance' => ['range' => $range] + $dashboard->attendanceOverview($from, $to, $userId, $fresh),
+            'live' => ['live' => $canViewAll ? $dashboard->live() : null],
+            default => $dashboard->build($from, $to, $userId, $canViewAll),
+        });
     }
-
     public function viewPermissionList()
     {
         return view('backend.common-pages.permission-list', ['resources' => Resource::orderBy('controller') ->orderByRaw('ISNULL(label) DESC')->orderBy('label')->get()]);

@@ -8,24 +8,21 @@
         .db-kpi .db-kpi-label { font-size: .8125rem; }
         .db-kpi .db-kpi-meta { font-size: .75rem; }
         .db-kpi .progress { height: 6px; }
+        .db-kpi.db-kpi-link { transition: box-shadow .15s; }
+        .db-kpi.db-kpi-link:hover { box-shadow: 0 .25rem .75rem rgba(0, 0, 0, .08); }
         .db-chart { min-height: 320px; }
         .db-empty { min-height: 200px; display: flex; align-items: center; justify-content: center; }
-        #dashboardContent.is-loading { opacity: .5; pointer-events: none; transition: opacity .15s; }
+        .db-section.is-loading { opacity: .5; pointer-events: none; transition: opacity .15s; }
+        .db-skeleton { display: inline-block; width: 4.5rem; height: 1.75rem; border-radius: .25rem; background: rgba(128, 128, 128, .18); animation: db-pulse 1.2s ease-in-out infinite; }
+        @keyframes db-pulse { 50% { opacity: .45; } }
         .db-user-link { cursor: pointer; }
+        .db-sort { cursor: pointer; user-select: none; white-space: nowrap; }
+        .db-sort .mdi { opacity: .35; }
+        .db-sort.is-sorted .mdi { opacity: 1; }
         #dashboardUserTable .progress { height: 6px; min-width: 80px; }
-        #dashboardAttendanceTable .db-att-name { position: sticky; left: 0; z-index: 1; background: var(--custom-white, #fff); min-width: 160px; }
-        #dashboardAttendanceTable .db-att-day { text-align: center; padding: .35rem .3rem; min-width: 38px; font-weight: 500; }
-        #dashboardAttendanceTable .db-att-day small { display: block; font-size: .65rem; font-weight: 400; opacity: .7; }
-        #dashboardAttendanceTable .db-att-cell { text-align: center; padding: .35rem .3rem; font-size: .75rem; font-weight: 600; }
-        .db-att-P { background: rgba(27, 175, 122, .16); color: #0f7a54; }
-        .db-att-A { background: rgba(227, 73, 72, .16); color: #b3302f; }
-        .db-att-O, .db-att-H { background: rgba(128, 128, 128, .12); color: #7a7a7a; }
-        .db-att-L { background: rgba(59, 130, 246, .16); color: #1d5fc4; }
-        [data-theme-mode="dark"] .db-att-L { color: #8ab4f8; }
-        [data-theme-mode="dark"] .db-att-P { color: #4fd3a3; }
-        [data-theme-mode="dark"] .db-att-A { color: #f08a89; }
-        [data-theme-mode="dark"] .db-att-O, [data-theme-mode="dark"] .db-att-H { color: #a8a8a8; }
-        .db-att-key { display: inline-block; min-width: 22px; padding: 0 .3rem; margin-left: .75rem; border-radius: 3px; text-align: center; font-size: .75rem; font-weight: 600; }
+        .db-rank { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .5rem 0; border-bottom: 1px solid rgba(128, 128, 128, .15); }
+        .db-rank:last-child { border-bottom: 0; }
+        .db-rank-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     </style>
 @endpush
 
@@ -36,7 +33,11 @@
                 <h4 class="mb-1 text-uppercase" style="font-family: 'Bell MT';font-size: 16px"><i class="mdi mdi-view-dashboard-outline me-2"></i>Dashboard</h4>
                 <p class="mb-0 text-muted" id="dashboardRangeText">&nbsp;</p>
             </div>
-            <div class="d-flex my-xl-auto right-content align-items-center">
+            <div class="d-flex my-xl-auto right-content align-items-center gap-2">
+                <span class="text-muted small d-none d-md-inline" id="dashboardUpdated"></span>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dashboardRefresh" title="Work the figures out again">
+                    <i class="mdi mdi-refresh me-1"></i> Refresh
+                </button>
                 <span class="badge {{ $canViewAll ? 'text-bg-primary' : 'text-bg-secondary' }}">
                     {{ $canViewAll ? 'All field users' : 'My activity' }}
                 </span>
@@ -83,13 +84,18 @@
             </div>
         </div>
 
+        @if($canViewAll)
+            {{-- where the team stands right now, whatever period is chosen below --}}
+            <div class="row" id="dashboardLive" data-section="live"></div>
+        @endif
+
         <div class="alert alert-danger d-none" id="dashboardError" role="alert">
             The dashboard could not be loaded. <a href="javascript:void(0)" id="dashboardRetry" class="alert-link">Try again</a>
         </div>
 
-        <div id="dashboardContent" class="is-loading">
-            <div class="row" id="dashboardKpis"></div>
+        <div class="row db-section is-loading" id="dashboardKpis" data-section="overview"></div>
 
+        <div class="db-section is-loading" data-section="overview">
             <div class="row">
                 <div class="col-xl-8">
                     <div class="card">
@@ -112,7 +118,35 @@
                     </div>
                 </div>
             </div>
+        </div>
 
+        <div class="row">
+            <div class="{{ $canViewAll ? 'col-xl-8' : 'col-xl-12' }}">
+                <div class="card db-section is-loading" data-section="attendance">
+                    <div class="card-header d-flex justify-content-between align-items-center border-bottom">
+                        <h5 class="card-title mb-0"><i class="mdi mdi-calendar-check-outline me-1"></i> Daily Presence</h5>
+                        <a href="{{ route('attendance.index') }}" class="btn btn-sm btn-outline-primary">Attendance sheet <i class="mdi mdi-arrow-right ms-1"></i></a>
+                    </div>
+                    <div class="card-body">
+                        <div id="dashboardPresenceChart" class="db-chart"></div>
+                    </div>
+                </div>
+            </div>
+            @if($canViewAll)
+                <div class="col-xl-4">
+                    <div class="card db-section is-loading" data-section="people">
+                        <div class="card-header border-bottom">
+                            <h5 class="card-title mb-0"><i class="mdi mdi-chart-donut me-1"></i> KPI Score Spread</h5>
+                        </div>
+                        <div class="card-body">
+                            <div id="dashboardScoreChart" class="db-chart"></div>
+                        </div>
+                    </div>
+                </div>
+            @endif
+        </div>
+
+        <div class="db-section is-loading" data-section="overview">
             <div class="row">
                 <div class="col-xl-6">
                     <div class="card">
@@ -135,118 +169,81 @@
                     </div>
                 </div>
             </div>
-
-            @if($canViewAll)
-                <div class="row">
-                    <div class="col-xl-12">
-                        <div class="card">
-                            <div class="card-header d-flex justify-content-between align-items-center border-bottom">
-                                <h5 class="card-title mb-0"><i class="mdi mdi-alert-circle-outline me-1"></i> Missing Reports</h5>
-                                <span class="badge text-bg-danger"><span id="dashboardMissingCount">0</span> users</span>
-                            </div>
-                            <div class="card-body">
-                                <div class="table-responsive">
-                                    <table class="table table-bordered align-middle w-100 mb-0" id="dashboardMissingTable">
-                                        <thead>
-                                        <tr>
-                                            <th style="width: 60px">Sl</th>
-                                            <th style="width: 25%">User</th>
-                                            <th class="text-end" style="width: 140px">Days Missed</th>
-                                            <th>Dates Without a Report</th>
-                                        </tr>
-                                        </thead>
-                                        <tbody></tbody>
-                                    </table>
-                                </div>
-                                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3 d-none" id="dashboardMissingPager">
-                                    <div class="text-muted db-pager-info"></div>
-                                    <nav aria-label="Missing report pages">
-                                        <ul class="pagination pagination-sm mb-0"></ul>
-                                    </nav>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="row">
-                    <div class="col-xl-12">
-                        <div class="card">
-                            <div class="card-header d-flex justify-content-between align-items-center border-bottom">
-                                <h5 class="card-title mb-0"><i class="mdi mdi-account-group-outline me-1"></i> Field User Performance</h5>
-                                <button type="button" class="btn btn-sm btn-outline-primary" id="dashboardUserExport">
-                                    <i class="mdi mdi-download me-1"></i> Export CSV
-                                </button>
-                            </div>
-                            <div class="card-body">
-                                <div class="table-responsive">
-                                    <table class="table table-bordered text-nowrap align-middle w-100 mb-0" id="dashboardUserTable">
-                                        <thead>
-                                        <tr>
-                                            <th>Sl</th>
-                                            <th>User</th>
-                                            <th class="text-end">Reports</th>
-                                            <th class="text-end">Outbound Calls</th>
-                                            <th class="text-end">Inbound Calls</th>
-                                            <th class="text-end">Message Replies</th>
-                                            <th class="text-end">Comment Replies</th>
-                                            <th class="text-end">Project Calls</th>
-                                            <th class="text-end">Total</th>
-                                            <th class="text-end">Target</th>
-                                            <th>Achievement</th>
-                                        </tr>
-                                        </thead>
-                                        <tbody></tbody>
-                                    </table>
-                                </div>
-                                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3 d-none" id="dashboardUserPager">
-                                    <div class="text-muted db-pager-info"></div>
-                                    <nav aria-label="Field user performance pages">
-                                        <ul class="pagination pagination-sm mb-0"></ul>
-                                    </nav>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="row">
-                    <div class="col-xl-12">
-                        <div class="card">
-                            <div class="card-header d-flex justify-content-between align-items-center border-bottom">
-                                <h5 class="card-title mb-0"><i class="mdi mdi-calendar-check-outline me-1"></i> Attendance Sheet</h5>
-                                <button type="button" class="btn btn-sm btn-outline-primary" id="dashboardAttendanceExport">
-                                    <i class="mdi mdi-download me-1"></i> Export CSV
-                                </button>
-                            </div>
-                            <div class="card-body">
-                                <p class="text-muted mb-3">
-                                    A user is present on a day they submitted a daily report for. A day of official leave counts as neither present nor absent.
-                                    <span class="db-att-key db-att-P">P</span> Present
-                                    <span class="db-att-key db-att-A">A</span> Absent
-                                    <span class="db-att-key db-att-L">L</span> On leave
-                                    <span class="db-att-key db-att-O">O</span> Off day
-                                    <span class="db-att-key db-att-H">H</span> Holiday
-                                </p>
-                                <div class="table-responsive">
-                                    <table class="table table-bordered text-nowrap align-middle mb-0" id="dashboardAttendanceTable">
-                                        <thead></thead>
-                                        <tbody></tbody>
-                                    </table>
-                                </div>
-                                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3 d-none" id="dashboardAttendancePager">
-                                    <div class="text-muted db-pager-info"></div>
-                                    <nav aria-label="Attendance sheet pages">
-                                        <ul class="pagination pagination-sm mb-0"></ul>
-                                    </nav>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            @endif
         </div>
 
+        @if($canViewAll)
+            <div class="row">
+                <div class="col-xl-4">
+                    <div class="card db-section is-loading" data-section="people">
+                        <div class="card-header border-bottom">
+                            <h5 class="card-title mb-0"><i class="mdi mdi-trophy-outline me-1"></i> Top Performers</h5>
+                        </div>
+                        <div class="card-body" id="dashboardTopList"></div>
+                    </div>
+                </div>
+                <div class="col-xl-4">
+                    <div class="card db-section is-loading" data-section="people">
+                        <div class="card-header border-bottom">
+                            <h5 class="card-title mb-0"><i class="mdi mdi-trending-down me-1"></i> Needs Attention</h5>
+                        </div>
+                        <div class="card-body" id="dashboardAttentionList"></div>
+                    </div>
+                </div>
+                <div class="col-xl-4">
+                    <div class="card db-section is-loading" data-section="attendance">
+                        <div class="card-header d-flex justify-content-between align-items-center border-bottom">
+                            <h5 class="card-title mb-0"><i class="mdi mdi-alert-circle-outline me-1"></i> Missing Reports</h5>
+                            <span class="badge text-bg-danger"><span id="dashboardMissingCount">0</span> users</span>
+                        </div>
+                        <div class="card-body" id="dashboardMissingList"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-xl-12">
+                    <div class="card db-section is-loading" data-section="people">
+                        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2 border-bottom">
+                            <h5 class="card-title mb-0"><i class="mdi mdi-account-group-outline me-1"></i> Field User Performance</h5>
+                            <div class="d-flex align-items-center gap-2">
+                                <input type="search" id="dashboardUserSearch" class="form-control form-control-sm" placeholder="Search name or employee ID" maxlength="100" style="min-width: 220px">
+                                <button type="button" class="btn btn-sm btn-outline-primary text-nowrap" id="dashboardUserExport">
+                                    <i class="mdi mdi-download me-1"></i> Export CSV
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-bordered text-nowrap align-middle w-100 mb-0" id="dashboardUserTable">
+                                    <thead>
+                                    <tr>
+                                        <th>Sl</th>
+                                        <th class="db-sort" data-sort="name">User <i class="mdi mdi-unfold-more-horizontal"></i></th>
+                                        <th class="db-sort text-end" data-sort="reports">Reports <i class="mdi mdi-unfold-more-horizontal"></i></th>
+                                        <th class="db-sort text-end" data-sort="outbound_calls">Outbound Calls <i class="mdi mdi-unfold-more-horizontal"></i></th>
+                                        <th class="db-sort text-end" data-sort="inbound_calls">Inbound Calls <i class="mdi mdi-unfold-more-horizontal"></i></th>
+                                        <th class="db-sort text-end" data-sort="message_replies">Message Replies <i class="mdi mdi-unfold-more-horizontal"></i></th>
+                                        <th class="db-sort text-end" data-sort="comments">Comment Replies <i class="mdi mdi-unfold-more-horizontal"></i></th>
+                                        <th class="db-sort text-end" data-sort="total">Total <i class="mdi mdi-unfold-more-horizontal"></i></th>
+                                        <th class="text-end">Target</th>
+                                        <th class="db-sort" data-sort="achievement_pct">Achievement <i class="mdi mdi-unfold-more-horizontal"></i></th>
+                                        <th class="db-sort text-end" data-sort="score">KPI Score <i class="mdi mdi-unfold-more-horizontal"></i></th>
+                                    </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3 d-none" id="dashboardUserPager">
+                                <div class="text-muted db-pager-info"></div>
+                                <nav aria-label="Field user performance pages">
+                                    <ul class="pagination pagination-sm mb-0"></ul>
+                                </nav>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        @endif
     </div>
 @endsection
 

@@ -14,6 +14,9 @@ Schedule::command('kv:expire-assignments')->dailyAt('00:00');
 // Run on the 1st of every month to freeze the KPI scores of the month that just ended
 Schedule::command('kpi:snapshot')->monthlyOn(1, '00:30');
 
+// Remove the KPI exports nobody came back for, so no generated file stays on disk
+Schedule::command('kpi:purge-exports')->hourly();
+
 // Close the check-ins users forgot to end; every 15 minutes so a missed run or another timezone is caught soon
 Schedule::command('attendance:auto-close')->everyFifteenMinutes()->withoutOverlapping();
 

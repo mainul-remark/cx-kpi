@@ -14,6 +14,7 @@ use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\AttendanceCheckController;
 use App\Http\Controllers\UserLeaveController;
 use App\Http\Controllers\EmployeeKpiController;
+use App\Http\Controllers\PeriodTargetController;
 use App\Http\Controllers\LeaveRequestController;
 
 Route::get('/', function () {
@@ -62,6 +63,7 @@ Route::middleware([
         'daily-reports'             => DailyReportController::class,
     ]);
     Route::resource('daily-targets', DailyTargetController::class)->only(['index', 'create', 'store', 'edit', 'destroy']);
+    Route::resource('period-targets', PeriodTargetController::class)->only(['index', 'store', 'destroy']);
     Route::post('holidays/import', [HolidayController::class, 'import'])->name('holidays.import');
     Route::get('holidays/sample', [HolidayController::class, 'sample'])->name('holidays.sample');
     Route::resource('holidays', HolidayController::class)->except(['create', 'show']);

@@ -15,5 +15,6 @@ class RoleTableSeeder extends Seeder
     {
         Role::create(['role_id'=>1,'name'=>'super-admin','created_at'=>'2023-05-05 1:01:15','updated_at'=>'2025-05-05 1:01:13']);
         Role::create(['role_id'=>2,'name'=>'system-admin','created_at'=>'2023-05-05 1:01:15','updated_at'=>'2025-05-05 1:01:13']);
+        Role::create(['role_id'=>3,'name'=>'field-user','created_at'=>'2023-05-05 1:01:15','updated_at'=>'2025-05-05 1:01:13']);
     }
 }

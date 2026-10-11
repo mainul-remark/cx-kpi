@@ -238,6 +238,53 @@ class DailyReportTest extends TestCase
         $this->assertDatabaseHas('daily_reports', ['id' => $report->id, 'outbound_calls' => 40]);
     }
 
+    public function test_report_is_filed_for_the_last_checked_in_day_picked_by_the_system(): void
+    {
+        [$platform, $project] = $this->platformAndProject();
+        $this->user->forceFill(['usages_sector' => 'field'])->save();
+
+        \App\Models\AttendanceSession::create([
+            'user_id' => $this->user->id,
+            'work_date' => today()->subDay()->toDateString(),
+            'checked_in_at' => today()->subDay()->setTime(6, 0),
+            'checked_out_at' => null,
+            'auto_closed_at' => now(),
+            'close_reason' => \App\Models\AttendanceSession::REASON_AUTO,
+        ]);
+
+        $this->get('/daily-reports/create')->assertOk()->assertSee(today()->subDay()->format('d M Y'));
+
+        // a date sent by the user is ignored
+        $this->postJson('/daily-reports', $this->payload($platform, $project) + ['report_date' => today()->toDateString()])
+            ->assertCreated();
+
+        $this->assertSame(today()->subDay()->toDateString(), DailyReport::query()->firstOrFail()->report_date->toDateString());
+        $this->assertNotNull(\App\Models\AttendanceSession::query()->firstOrFail()->checked_out_at);
+
+        // nothing is owed any more, so the next report is for today
+        $this->get('/daily-reports/create')->assertOk()->assertSee(today()->format('d M Y'));
+    }
+
+    public function test_corporate_user_can_edit_the_report_of_a_field_user(): void
+    {
+        [$platform, $project] = $this->platformAndProject();
+        $this->postJson('/daily-reports', $this->payload($platform, $project))->assertCreated();
+        $report = DailyReport::query()->firstOrFail();
+
+        $corporate = User::factory()->create(['usages_sector' => 'corporate']);
+        $this->actingAs($corporate);
+
+        $changed = $this->payload($platform, $project);
+        $changed['outbound_calls'] = 7;
+
+        $this->get("/daily-reports/{$report->id}/edit")->assertOk();
+        $this->putJson("/daily-reports/{$report->id}", $changed)->assertOk();
+
+        $report->refresh();
+        $this->assertSame(7, (int) $report->outbound_calls);
+        $this->assertSame($this->user->id, (int) $report->user_id);
+    }
+
     public function test_user_with_team_access_can_view_but_not_change_reports_of_others(): void
     {
         [$platform, $project] = $this->platformAndProject();

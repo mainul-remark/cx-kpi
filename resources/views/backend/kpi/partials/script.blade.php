@@ -263,7 +263,6 @@
             const data = params();
             // keeps the filters in the address, so the view can be bookmarked or shared
             window.history.replaceState(null, '', kpiUrl + '?' + $.param(data));
-            $('#kpiExport').attr('href', kpiUrl + '/export?' + $.param(data));
 
             request = $.ajax({ url: kpiUrl, method: 'GET', data: data, dataType: 'json' })
                 .done(function (response) {
@@ -314,6 +313,61 @@
         });
 
         $('#kpiRetry').on('click', load);
+
+        // the export is built in the background: ask for it, wait for it to be ready, then download it
+        const $export = $('#kpiExport');
+        const exportLabel = $export.html();
+        const exportPollMs = 2000;
+        const exportMaxPolls = 300;
+
+        function exportFinished(message) {
+            $export.removeClass('disabled').html(exportLabel);
+            if (message) {
+                $('#kpiFilterError').text(message).removeClass('d-none');
+            }
+        }
+
+        function pollExport(token, attempt) {
+            if (attempt > exportMaxPolls) {
+                exportFinished('The export is taking too long, please try again later.');
+                return;
+            }
+
+            $.ajax({ url: kpiUrl + '/export', method: 'GET', data: { token: token }, dataType: 'json' })
+                .done(function (response) {
+                    if (response.status === 'done') {
+                        // a file response with an attachment header, so the page stays where it is
+                        window.location.href = kpiUrl + '/export?' + $.param({ token: token, download: 1 });
+                        exportFinished();
+                    } else if (response.status === 'failed' || response.status === 'expired') {
+                        exportFinished(response.message || 'The export is no longer available, please try again.');
+                    } else {
+                        setTimeout(function () { pollExport(token, attempt + 1); }, exportPollMs);
+                    }
+                })
+                .fail(function () {
+                    exportFinished('The export could not be checked, please try again.');
+                });
+        }
+
+        $export.on('click', function (e) {
+            e.preventDefault();
+            if ($export.hasClass('disabled')) return;
+
+            $('#kpiFilterError').addClass('d-none');
+            $export.addClass('disabled').html('<span class="spinner-border spinner-border-sm me-1"></span> Preparing export...');
+
+            $.ajax({ url: kpiUrl + '/export', method: 'GET', data: params(), dataType: 'json' })
+                .done(function (response) {
+                    pollExport(response.token, 1);
+                })
+                .fail(function (xhr) {
+                    const errors = xhr.status === 422 && xhr.responseJSON && xhr.responseJSON.errors;
+                    exportFinished(errors
+                        ? errors[Object.keys(errors)[0]][0]
+                        : (xhr.status === 403 ? 'You do not have permission to export.' : 'The export could not be started.'));
+                });
+        });
 
         $(document).on('click', '.kpi-user-link', function () {
             state.user_id = String($(this).data('id'));

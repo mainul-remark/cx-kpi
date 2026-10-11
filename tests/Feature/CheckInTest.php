@@ -53,10 +53,12 @@ class CheckInTest extends TestCase
         ]);
 
         $this->actingAs($this->agent)->get('/dashboard')->assertRedirect(route('daily-reports.create'));
-        $this->actingAs($this->agent)->get(route('daily-reports.create'))->assertOk();
+        $this->actingAs($this->agent)->get(route('daily-reports.create'))
+            ->assertOk()
+            ->assertSee('05 Oct 2026'); // the system picks the day the user checked in on
 
         \DB::table('daily_reports')->insert([
-            'user_id' => $this->agent->id, 'report_date' => '2026-10-06',
+            'user_id' => $this->agent->id, 'report_date' => '2026-10-05',
             'outbound_calls' => 0, 'inbound_calls' => 0, 'created_at' => now(), 'updated_at' => now(),
         ]);
 
@@ -74,7 +76,7 @@ class CheckInTest extends TestCase
             'close_reason' => AttendanceSession::REASON_AUTO,
         ]);
 
-        app(\App\Services\Attendance\AttendanceService::class)->finalizeForgotten($this->agent);
+        app(\App\Services\Attendance\AttendanceService::class)->finalizeForgotten($this->agent, '2026-10-05');
 
         $session->refresh();
         // 11:59 pm in Dhaka on the day itself
@@ -84,6 +86,49 @@ class CheckInTest extends TestCase
         $row = app(\App\Services\Attendance\AttendanceService::class)->sessions('2026-10-01', '2026-10-31', $this->agent->id, false)['rows'][0];
         $this->assertSame('incomplete', $row['status']);
         $this->assertNull($row['minutes']);
+    }
+
+    public function test_check_in_is_refused_until_the_report_of_the_last_active_day_is_filed(): void
+    {
+        $this->actingAs($this->agent)->postJson('/attendance/check-in')->assertOk();
+        $this->actingAs($this->agent)->postJson('/attendance/check-out')->assertOk();
+
+        // the next day, with the report of 06 Oct not filed yet
+        Carbon::setTestNow('2026-10-07 04:00:00');
+        $this->actingAs($this->agent)->postJson('/attendance/check-in')
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'Submit your daily report for 06 Oct 2026 before you check in.');
+        $this->assertSame(1, AttendanceSession::count());
+
+        $this->fileReport('2026-10-06');
+        $this->actingAs($this->agent)->postJson('/attendance/check-in')->assertOk();
+        $this->assertSame(2, AttendanceSession::count());
+    }
+
+    public function test_only_the_last_active_day_is_asked_for(): void
+    {
+        foreach (['2026-10-01', '2026-10-02', '2026-10-05'] as $day) {
+            AttendanceSession::create([
+                'user_id' => $this->agent->id, 'work_date' => $day,
+                'checked_in_at' => $day.' 05:00:00', 'checked_out_at' => $day.' 11:00:00',
+                'close_reason' => AttendanceSession::REASON_MANUAL,
+            ]);
+        }
+
+        $service = app(\App\Services\Attendance\AttendanceService::class);
+        $this->assertSame('2026-10-05', $service->nextReportDate($this->agent));
+
+        $this->fileReport('2026-10-05');
+        $this->assertFalse($service->mustFileReport($this->agent));
+        $this->assertSame('2026-10-06', $service->nextReportDate($this->agent));
+    }
+
+    private function fileReport(string $date): void
+    {
+        \Illuminate\Support\Facades\DB::table('daily_reports')->insert([
+            'user_id' => $this->agent->id, 'report_date' => $date,
+            'outbound_calls' => 0, 'inbound_calls' => 0, 'created_at' => now(), 'updated_at' => now(),
+        ]);
     }
 
     public function test_field_user_checks_in_and_out(): void
@@ -198,6 +243,7 @@ class CheckInTest extends TestCase
             ->assertJsonPath('warnings', ['06 Oct 2026']);
 
         // checking in shows it again, then it is acknowledged
+        $this->fileReport('2026-10-06');
         $this->actingAs($this->agent)->postJson('/attendance/check-in')
             ->assertOk()
             ->assertJsonPath('checked_in', true)
@@ -211,6 +257,7 @@ class CheckInTest extends TestCase
         $this->actingAs($this->agent)->postJson('/attendance/check-in')->assertOk();
 
         Carbon::setTestNow('2026-10-07 04:00:00');
+        $this->fileReport('2026-10-06');
         $this->actingAs($this->agent)->postJson('/attendance/check-in')
             ->assertOk()
             ->assertJsonPath('warnings', ['06 Oct 2026']);
@@ -330,6 +377,39 @@ class CheckInTest extends TestCase
         $this->actingAs($this->agent)->getJson('/attendance/status')->assertJsonPath('warnings', []);
     }
 
+    public function test_manager_corrects_the_check_in_time_too(): void
+    {
+        $manager = User::factory()->create(['usages_sector' => 'corporate']);
+        $this->actingAs($this->agent)->postJson('/attendance/check-in'); // 10:00 in Dhaka on 06 Oct
+        $session = AttendanceSession::first();
+
+        $this->actingAs($manager)->postJson("/attendance/sessions/{$session->id}/adjust", [
+            'checked_in_at' => '2026-10-06T09:15',
+            'checked_out_at' => '2026-10-06T00:30',
+            'note' => 'Wrong order',
+        ])->assertStatus(422)->assertJsonValidationErrors(['checked_out_at']);
+
+        // the check in cannot move to another day
+        $this->actingAs($manager)->postJson("/attendance/sessions/{$session->id}/adjust", [
+            'checked_in_at' => '2026-10-05T09:15',
+            'checked_out_at' => '2026-10-06T09:30',
+            'note' => 'Other day',
+        ])->assertStatus(422)->assertJsonValidationErrors(['checked_in_at']);
+
+        $this->actingAs($manager)->postJson("/attendance/sessions/{$session->id}/adjust", [
+            'checked_in_at' => '2026-10-06T08:45',
+            'checked_out_at' => '2026-10-06T09:30',
+            'note' => 'Came early, confirmed',
+        ])->assertOk();
+
+        $session->refresh();
+        // 08:45 in Dhaka is 02:45 UTC
+        $this->assertSame('2026-10-06 02:45', $session->checked_in_at->format('Y-m-d H:i'));
+        $this->assertSame('2026-10-06 03:30', $session->checked_out_at->format('Y-m-d H:i'));
+        $this->assertSame('2026-10-06', $session->work_date->toDateString());
+        $this->assertSame(AttendanceSession::REASON_ADMIN, $session->close_reason);
+    }
+
     public function test_a_correction_cannot_precede_the_check_in_or_come_from_a_field_user(): void
     {
         $manager = User::factory()->create(['usages_sector' => 'corporate']);
@@ -371,6 +451,7 @@ class CheckInTest extends TestCase
         $this->actingAs($this->agent)->postJson('/attendance/check-in')->assertOk();
         Carbon::setTestNow('2026-10-05 05:00:00');
         $this->actingAs($this->agent)->postJson('/attendance/check-out');
+        $this->fileReport('2026-10-04');
         $this->actingAs($this->agent)->postJson('/attendance/check-in')->assertOk();
         Carbon::setTestNow('2026-10-06 04:00:00');
         $this->artisan('attendance:auto-close');

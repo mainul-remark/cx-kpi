@@ -7,6 +7,7 @@ use App\Models\DailyReport;
 use App\Models\Project;
 use App\Models\SocialPlatform;
 use App\Models\User;
+use App\Services\Attendance\AttendanceService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Yajra\DataTables\DataTables;
@@ -69,11 +70,12 @@ class DailyReportController extends Controller
     }
 
     /**
-     * Show the day-end form for today, filled in when the user already reported that day.
+     * Show the day-end form for the day the system picked, filled in when the user already reported that day.
      */
     public function create(Request $request)
     {
-        $date = today()->toDateString();
+        // the day is picked by the system, never by the user
+        $date = app(AttendanceService::class)->nextReportDate($request->user());
 
         $report = DailyReport::query()
             ->where('user_id', $request->user()->id)
@@ -84,7 +86,7 @@ class DailyReportController extends Controller
     }
 
     /**
-     * Store the user's report for today, saving over the one already there.
+     * Store the user's report for the day the system picked, saving over the one already there.
      */
     public function store(DailyReportRequest $request)
     {
@@ -119,7 +121,7 @@ class DailyReportController extends Controller
 
         return view('backend.daily-reports.show', [
             'report' => $dailyReport,
-            'isOwner' => $this->isOwner($request, $dailyReport),
+            'isOwner' => $this->canEdit($request, $dailyReport),
         ]);
     }
 
@@ -128,7 +130,7 @@ class DailyReportController extends Controller
      */
     public function edit(Request $request, DailyReport $dailyReport)
     {
-        abort_unless($this->isOwner($request, $dailyReport), 403);
+        abort_unless($this->canEdit($request, $dailyReport), 403);
 
         return $this->form($dailyReport, $dailyReport->report_date->toDateString());
     }
@@ -139,7 +141,7 @@ class DailyReportController extends Controller
     public function update(DailyReportRequest $request, DailyReport $dailyReport)
     {
         try {
-            $report = DailyReport::saveForUser($request->user(), $request->validated(), $dailyReport, $request->reportDate());
+            $report = DailyReport::saveForUser($dailyReport->user, $request->validated(), $dailyReport, $request->reportDate());
         } catch (\Throwable $th) {
             report($th);
             return response()->json([
@@ -174,6 +176,12 @@ class DailyReportController extends Controller
             'success' => true,
             'message' => 'Daily report deleted successfully',
         ]);
+    }
+
+    /** The owner changes a report, and so does a corporate user from the admin panel. */
+    private function canEdit(Request $request, DailyReport $report): bool
+    {
+        return $this->isOwner($request, $report) || $this->canViewAll($request);
     }
 
     private function isOwner(Request $request, DailyReport $report): bool
@@ -258,6 +266,7 @@ class DailyReportController extends Controller
         return DataTables::of($reports)
             ->addIndexColumn()
             ->addColumn('is_own', fn (DailyReport $report) => (int) $report->user_id === $userId)
+            ->addColumn('can_edit', fn (DailyReport $report) => (int) $report->user_id === $userId || $request->user()->usages_sector === 'corporate')
             ->toJson();
     }
 }

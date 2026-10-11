@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Services\Attendance\AttendanceService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 
 class AttendanceCheckController extends Controller
 {
@@ -27,6 +28,15 @@ class AttendanceCheckController extends Controller
     public function checkIn(Request $request): JsonResponse
     {
         $user = $this->fieldUser($request);
+
+        // the report of the last day worked comes first
+        $owed = $this->attendance->owedReportDate($user);
+        if ($owed !== null) {
+            return response()->json([
+                'message' => 'Submit your daily report for '.Carbon::parse($owed)->format('d M Y').' before you check in.',
+                'redirect' => route('daily-reports.create'),
+            ], 422);
+        }
 
         $result = $this->attendance->checkIn($user, $this->geo($request), $request->ip(), $request->userAgent());
 

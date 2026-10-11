@@ -3,7 +3,6 @@
         const attendanceUrl = @json(route('attendance.index'));
         const canViewAll = @json($canViewAll);
         const defaultPreset = 'month';
-        const perPage = 25;
 
         const $content = $('#attendanceContent');
         const $from = $('#attendance_from');
@@ -11,7 +10,7 @@
         const $user = $('#attendance_user');
         let request = null;
         let lastData = null;
-        let page = 1;
+        let sheetRequest = null;
         // what each attendance mark shows in its cell and means in words
         const marks = {
             P: { text: 'P', label: 'Present' },
@@ -78,17 +77,12 @@
         }
 
         function renderKpis(data) {
-            const rows = data.attendance.rows;
-            let present = 0, absent = 0, leave = 0;
-            rows.forEach(function (row) {
-                present += row.present;
-                absent += row.absent;
-                leave += row.leave;
-            });
+            const summary = data.attendance.summary;
+            const present = summary.present, absent = summary.absent, leave = summary.leave;
             const due = present + absent;
 
             $('#attendanceKpis').html(
-                tile('Field Users', rows.length, 'on this sheet') +
+                tile('Field Users', summary.users, 'on this sheet') +
                 tile('Present', present, 'days with a report') +
                 tile('Absent', absent, 'working days without one') +
                 tile('Attendance', due > 0 ? (Math.round(present / due * 1000) / 10) + '%' : '&mdash;', (due > 0 ? 'of ' + due + ' days due' : 'No working day in this period yet') + (leave > 0 ? ', ' + leave + ' on leave' : ''))
@@ -108,34 +102,30 @@
             return pages;
         }
 
-        // draws the pager and returns the index of the first row on the page
-        function paginate(total) {
-            const $pager = $('#attendancePager');
-            const lastPage = Math.max(1, Math.ceil(total / perPage));
-            page = Math.min(Math.max(1, page), lastPage);
-            const start = (page - 1) * perPage;
-
-            $pager.toggleClass('d-none', total <= perPage);
-            $pager.find('.att-pager-info').text('Showing ' + (start + 1) + ' to ' + Math.min(start + perPage, total) + ' of ' + total + ' users');
+        // draws the pager of a section from the meta the server sent; shared with the check-in log
+        window.renderAttendancePager = function ($pager, meta, unit, linkClass) {
+            $pager.toggleClass('d-none', meta.last_page <= 1);
+            $pager.find('.att-pager-info').text('Showing ' + meta.from + ' to ' + meta.to + ' of ' + meta.total + ' ' + unit);
 
             function item(label, target, disabled, active) {
                 return '<li class="page-item' + (disabled ? ' disabled' : '') + (active ? ' active' : '') + '">' +
                     (target === null
                         ? '<span class="page-link">' + label + '</span>'
-                        : '<a class="page-link att-page" href="javascript:void(0)" data-page="' + target + '"' + (active ? ' aria-current="page"' : '') + '>' + label + '</a>') +
+                        : '<a class="page-link ' + linkClass + '" href="javascript:void(0)" data-page="' + target + '"' + (active ? ' aria-current="page"' : '') + '>' + label + '</a>') +
                     '</li>';
             }
 
             $pager.find('.pagination').html(
-                item('Previous', page > 1 ? page - 1 : null, page === 1) +
-                pageNumbers(page, lastPage).map(function (number) {
-                    return number === null ? item('&hellip;', null, true) : item(number, number, false, number === page);
+                item('Previous', meta.page > 1 ? meta.page - 1 : null, meta.page === 1) +
+                pageNumbers(meta.page, meta.last_page).map(function (number) {
+                    return number === null ? item('&hellip;', null, true) : item(number, number, false, number === meta.page);
                 }).join('') +
-                item('Next', page < lastPage ? page + 1 : null, page === lastPage)
+                item('Next', meta.page < meta.last_page ? meta.page + 1 : null, meta.page === meta.last_page)
             );
+        };
 
-            return start;
-        }
+        // the filters in force, for the sections that load their own pages
+        window.attendanceParams = params;
 
         function renderTable(data) {
             const $table = $('#attendanceTable');
@@ -165,9 +155,9 @@
                 return;
             }
 
-            const start = paginate(rows.length);
+            window.renderAttendancePager($('#attendancePager'), data.attendance.meta, 'users', 'att-page');
 
-            $table.find('tbody').html(rows.slice(start, start + perPage).map(function (row) {
+            $table.find('tbody').html(rows.map(function (row) {
                 let cells = '';
                 for (let i = 0; i < days.length; i++) {
                     const mark = row.marks.charAt(i);
@@ -204,14 +194,29 @@
             renderTable(data);
         }
 
-        // a file built in the browser from the marks already on the page
+        // the file is built in the browser, from every row of the sheet and not only those of the page on screen
         function exportCsv() {
             if (!lastData) return;
 
-            const days = lastData.attendance.days;
+            const $button = $('#attendanceExport').prop('disabled', true);
+
+            $.ajax({ url: attendanceUrl, method: 'GET', data: $.extend({}, params(), { export: 1 }), dataType: 'json' })
+                .done(function (response) {
+                    downloadCsv(response.attendance, response.range);
+                })
+                .fail(function () {
+                    $('#attendanceFilterError').text('The export could not be prepared. Please try again.').removeClass('d-none');
+                })
+                .always(function () {
+                    $button.prop('disabled', false);
+                });
+        }
+
+        function downloadCsv(attendance, range) {
+            const days = attendance.days;
             const rows = [['User', 'Present', 'Absent', 'Leave', 'Attendance %'].concat(days.map(function (day) { return day.date; }))];
 
-            lastData.attendance.rows.forEach(function (row) {
+            attendance.rows.forEach(function (row) {
                 rows.push([row.name, row.present, row.absent, row.leave, row.pct].concat(row.marks.split('').map(function (mark) {
                     return marks[mark].label;
                 })));
@@ -228,7 +233,7 @@
 
             const link = document.createElement('a');
             link.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' }));
-            link.download = 'attendance-sheet_' + lastData.range.from + '_to_' + lastData.range.to + '.csv';
+            link.download = 'attendance-sheet_' + range.from + '_to_' + range.to + '.csv';
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
@@ -246,9 +251,11 @@
             // keeps the filters in the address, so the view can be bookmarked or shared
             window.history.replaceState(null, '', attendanceUrl + '?' + $.param(data));
 
+            // a new sheet starts on its first page, and so does the check-in log
+            if (sheetRequest) sheetRequest.abort();
+
             request = $.ajax({ url: attendanceUrl, method: 'GET', data: data, dataType: 'json' })
                 .done(function (response) {
-                    page = 1;
                     render(response);
                     $content.removeClass('is-loading');
                 })
@@ -301,9 +308,34 @@
             load();
         });
 
+        // turning a page asks the server for that page of the sheet only, the tiles and the log stay as they are
         $(document).on('click', '.att-page', function () {
-            page = parseInt($(this).data('page'), 10);
-            renderTable(lastData);
+            if (!lastData) return;
+
+            if (sheetRequest) sheetRequest.abort();
+            $content.addClass('is-loading');
+
+            const data = $.extend({}, params(), { section: 'sheet', page: parseInt($(this).data('page'), 10), summary: 0 });
+
+            // the range the sheet on screen was loaded for, whatever the filters were changed to since
+            data.preset = 'custom';
+            data.from = lastData.range.from;
+            data.to = lastData.range.to;
+
+            sheetRequest = $.ajax({ url: attendanceUrl, method: 'GET', data: data, dataType: 'json' })
+                .done(function (response) {
+                    lastData.attendance.days = response.attendance.days;
+                    lastData.attendance.rows = response.attendance.rows;
+                    lastData.attendance.meta = response.attendance.meta;
+                    renderTable(lastData);
+                    $content.removeClass('is-loading');
+                })
+                .fail(function (xhr) {
+                    if (xhr.statusText === 'abort') return;
+
+                    $content.removeClass('is-loading');
+                    $('#attendanceFilterError').text('That page could not be loaded. Please try again.').removeClass('d-none');
+                });
         });
 
         $('#attendanceExport').on('click', exportCsv);

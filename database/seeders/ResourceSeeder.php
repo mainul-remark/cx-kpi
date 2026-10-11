@@ -129,6 +129,13 @@ class ResourceSeeder extends Seeder
                 'label' => 'Show All Attendance',
             ],
             [
+                'resource_id' => 'd7fe7a96b7a9758ae302e587c45107b34b28f5a3',
+                'name' => 'Attendance POST::Adjust',
+                'controller' => 'Attendance',
+                'action' => 'App\\Http\\Controllers\\AttendanceController@adjust',
+                'label' => 'Adjust Check In and Check Out',
+            ],
+            [
                 'resource_id' => 'e98b6f5f85f88dc0c48e0821e9a5979de927c8e9',
                 'name' => 'Backend-CommonPages-AdminView GET::ActivityLog',
                 'controller' => 'Backend-CommonPages-AdminView',
@@ -400,6 +407,27 @@ class ResourceSeeder extends Seeder
                 'controller' => 'LeaveRequest',
                 'action' => 'App\\Http\\Controllers\\LeaveRequestController@store',
                 'label' => 'Request Leave',
+            ],
+            [
+                'resource_id' => 'c311f5b66ec23190638aa8d5332adb62d2ef606b',
+                'name' => 'PeriodTarget GET::Index',
+                'controller' => 'PeriodTarget',
+                'action' => 'App\\Http\\Controllers\\PeriodTargetController@index',
+                'label' => 'Show Monthly Targets',
+            ],
+            [
+                'resource_id' => '622fccd7b6746f63425b0a78cb9a54e4aca1ad08',
+                'name' => 'PeriodTarget POST::Store',
+                'controller' => 'PeriodTarget',
+                'action' => 'App\\Http\\Controllers\\PeriodTargetController@store',
+                'label' => 'Save Monthly Targets',
+            ],
+            [
+                'resource_id' => '085bd9cbdd61e8a6f7b1e2d79ff9e27ac4e990a3',
+                'name' => 'PeriodTarget DELETE::Destroy',
+                'controller' => 'PeriodTarget',
+                'action' => 'App\\Http\\Controllers\\PeriodTargetController@destroy',
+                'label' => 'Delete Monthly Target',
             ],
             [
                 'resource_id' => 'ead5f50133a070a8f23ee3f533416ccfd7cfe621',

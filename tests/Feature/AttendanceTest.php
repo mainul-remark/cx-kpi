@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\AttendanceSession;
 use App\Models\DailyReport;
 use App\Models\Holiday;
 use App\Models\User;
@@ -128,6 +129,102 @@ class AttendanceTest extends TestCase
             ->assertOk()
             ->assertJsonCount(1, 'attendance.rows')
             ->assertJsonPath('attendance.rows.0.name', 'Agent Two');
+    }
+
+    public function test_sheet_is_paged_on_the_server_with_totals_of_the_whole_sheet(): void
+    {
+        // 5 more field users, 7 in all, who all reported on the 6th
+        foreach (range(1, 5) as $number) {
+            $this->report(User::factory()->create(['usages_sector' => 'field', 'name' => 'Extra '.$number, 'created_at' => '2026-09-01 09:00:00']), '2026-10-06');
+        }
+
+        $filters = ['preset' => 'custom', 'from' => '2026-10-05', 'to' => '2026-10-06', 'per_page' => 5];
+
+        $first = $this->data($this->manager, $filters)->assertOk();
+        $first->assertJsonCount(5, 'attendance.rows')
+            ->assertJsonPath('attendance.meta.page', 1)
+            ->assertJsonPath('attendance.meta.total', 7)
+            ->assertJsonPath('attendance.meta.last_page', 2)
+            ->assertJsonPath('attendance.meta.from', 1)
+            ->assertJsonPath('attendance.meta.to', 5)
+            // the tiles add up every user, not only those on the page: 5 reports of the 6th, one more of the 5th
+            ->assertJsonPath('attendance.summary.users', 7)
+            ->assertJsonPath('attendance.summary.present', 8)
+            ->assertJsonPath('attendance.summary.absent', 6);
+
+        $names = collect($first->json('attendance.rows'))->pluck('name');
+        $this->assertSame($names->sort()->values()->all(), $names->all());
+
+        // the next page of the sheet only: the other users, and no totals when they are not asked for
+        $second = $this->data($this->manager, $filters + ['section' => 'sheet', 'page' => 2, 'summary' => 0])->assertOk();
+        $second->assertJsonCount(2, 'attendance.rows')
+            ->assertJsonPath('attendance.meta.page', 2)
+            ->assertJsonPath('attendance.meta.from', 6)
+            ->assertJsonPath('attendance.meta.to', 7)
+            ->assertJsonPath('attendance.summary', null)
+            ->assertJsonMissingPath('check_ins')
+            ->assertJsonMissingPath('currently_in');
+
+        $this->assertEmpty($names->intersect(collect($second->json('attendance.rows'))->pluck('name')));
+    }
+
+    public function test_export_returns_every_row_of_the_sheet(): void
+    {
+        foreach (range(1, 5) as $number) {
+            User::factory()->create(['usages_sector' => 'field', 'name' => 'Extra '.$number, 'created_at' => '2026-09-01 09:00:00']);
+        }
+
+        $this->data($this->manager, ['preset' => 'today', 'export' => 1, 'per_page' => 5])
+            ->assertOk()
+            ->assertJsonCount(7, 'attendance.rows')
+            ->assertJsonMissingPath('check_ins')
+            ->assertJsonMissingPath('attendance.meta');
+    }
+
+    public function test_check_in_log_is_paged_by_day_and_never_splits_a_day(): void
+    {
+        // four days, the third of them with two sessions
+        foreach (['2026-10-03' => 1, '2026-10-04' => 1, '2026-10-05' => 2, '2026-10-06' => 1] as $date => $sessions) {
+            foreach (range(1, $sessions) as $session) {
+                AttendanceSession::create([
+                    'user_id' => $this->agent->id,
+                    'work_date' => $date,
+                    'checked_in_at' => $date.' '.sprintf('%02d', 4 + $session).':00:00',
+                    'checked_out_at' => $date.' '.sprintf('%02d', 5 + $session).':00:00',
+                    'close_reason' => AttendanceSession::REASON_MANUAL,
+                ]);
+            }
+        }
+
+        $filters = ['preset' => 'custom', 'from' => '2026-10-01', 'to' => '2026-10-06', 'per_page' => 5, 'section' => 'check_ins'];
+
+        // 5 is the least a page can hold, so the 4 days are on one page, newest first, with the two sessions in one row
+        $one = $this->data($this->manager, $filters)->assertOk();
+        $one->assertJsonCount(4, 'check_ins.rows')
+            ->assertJsonPath('check_ins.meta.total', 4)
+            ->assertJsonPath('check_ins.meta.last_page', 1)
+            ->assertJsonMissingPath('attendance');
+        $this->assertSame(['2026-10-06', '2026-10-05', '2026-10-04', '2026-10-03'], collect($one->json('check_ins.rows'))->pluck('work_date')->all());
+        $this->assertSame([1, 2, 1, 1], collect($one->json('check_ins.rows'))->pluck('sessions')->all());
+
+        // more days than a page holds: the second page carries on where the first stopped
+        foreach (range(1, 4) as $number) {
+            $other = User::factory()->create(['usages_sector' => 'field']);
+            AttendanceSession::create([
+                'user_id' => $other->id,
+                'work_date' => '2026-10-06',
+                'checked_in_at' => '2026-10-06 0'.$number.':00:00',
+                'checked_out_at' => null,
+            ]);
+        }
+
+        $pages = collect([1, 2])->map(fn (int $page) => $this->data($this->manager, $filters + ['page' => $page])->assertOk());
+
+        $pages[0]->assertJsonCount(5, 'check_ins.rows')->assertJsonPath('check_ins.meta.total', 8)->assertJsonPath('check_ins.meta.last_page', 2);
+        $pages[1]->assertJsonCount(3, 'check_ins.rows')->assertJsonPath('check_ins.meta.from', 6)->assertJsonPath('check_ins.meta.to', 8);
+
+        $keys = $pages->flatMap(fn ($page) => $page->json('check_ins.rows'))->map(fn (array $row) => $row['user_id'].'|'.$row['work_date']);
+        $this->assertCount(8, $keys->unique());
     }
 
     public function test_invalid_filters_are_rejected(): void

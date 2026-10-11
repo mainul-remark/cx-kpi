@@ -35,8 +35,8 @@
                     if (can.show) {
                         buttons += '<a href="' + reportUrl + '/' + id + '" class="btn btn-outline-primary btn-sm" title="View Report"><i class="fa fa-eye"></i></a>';
                     }
-                    // a report can only be changed by the user it belongs to
-                    if (can.edit && row.is_own) {
+                    // changed by the user it belongs to, or by a corporate user
+                    if (can.edit && row.can_edit) {
                         buttons += '<a href="' + reportUrl + '/' + id + '/edit" class="btn btn-outline-primary btn-sm ms-2" title="Edit Report"><i class="fa fa-pencil-alt"></i></a>';
                     }
                     if (can.destroy && row.is_own) {

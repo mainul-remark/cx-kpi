@@ -27,5 +27,12 @@ class UserSeeder extends Seeder
             'employee_id' => 'M02',
             'usages_sector' => 'corporate',
         ]);
+        User::/*factory()->withPersonalTeam()->*/create([
+            'name' => 'Super Admin',
+            'email' => 'cx@remarkhb.com',
+            'password' => bcrypt('cx'),
+            'employee_id' => 'M03',
+            'usages_sector' => 'field',
+        ]);
     }
 }

@@ -4,9 +4,11 @@ namespace Tests\Feature;
 
 use App\Exports\EmployeeKpiExport;
 use App\Exports\EmployeeKpiUserSheet;
+use App\Jobs\GenerateKpiExport;
 use App\Models\DailyReport;
 use App\Models\DailyTarget;
 use App\Models\KpiSnapshot;
+use App\Models\PeriodTarget;
 use App\Models\Project;
 use App\Models\SocialPlatform;
 use App\Models\User;
@@ -15,9 +17,12 @@ use App\Services\Kpi\EmployeeKpiService;
 use Illuminate\Auth\Middleware\EnsureEmailIsVerified;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Testing\TestResponse;
 use Maatwebsite\Excel\Facades\Excel;
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Tests\TestCase;
 use Uzzal\Acl\Middleware\AuthenticateWithAcl;
 use Uzzal\Acl\Middleware\ResourceMaker;
@@ -66,7 +71,11 @@ class EmployeeKpiTest extends TestCase
         $this->assertSame(175, $row['target_total']);
         $this->assertSame(135, $row['actual_total']);
         $this->assertEquals(77.1, $row['pct']);
-        $this->assertEquals(77.1, $row['score']);
+        // outbound calls carry 70 of the 100 and the Facebook comments the other 30: 70 x 135/175 + 30 x 26/35
+        $this->assertEquals(76.3, $row['score']);
+        $this->assertSame(['outbound_calls', 'platform:'.$this->facebook->id.':comments'], array_keys($row['lines']));
+        $this->assertEquals([0.7, 0.3], array_column($row['lines'], 'weight'));
+        $this->assertEquals([54.0, 22.29], array_map(fn ($score) => round($score, 2), array_column($row['lines'], 'score')));
         $this->assertSame(4, $row['target_days']);
         $this->assertSame(4, $row['worked']);
         $this->assertSame(1, $row['absent']);
@@ -75,7 +84,7 @@ class EmployeeKpiTest extends TestCase
         $breakdown = collect($row['breakdown'])->keyBy('key');
         $this->assertSame(175, $breakdown['outbound_calls']['target']);
         $this->assertSame(135, $breakdown['outbound_calls']['actual']);
-        // the approximate comment target is listed with its figures, though it weighs nothing in the score
+        // the comment target is listed with its figures, though it is not part of the outbound totals
         $this->assertSame(35, $breakdown['comments']['target']);
         // the Instagram comments had no target, so they are not counted
         $this->assertSame(26, $breakdown['comments']['actual']);
@@ -220,9 +229,13 @@ class EmployeeKpiTest extends TestCase
         $this->seedAgentOne();
         Excel::fake();
 
-        $this->actingAs($this->manager)->get('/kpi/export?preset=custom&from=2026-09-30&to=2026-10-08')->assertOk();
+        $token = $this->actingAs($this->manager)->get('/kpi/export?preset=custom&from=2026-09-30&to=2026-10-08')
+            ->assertStatus(202)
+            ->assertJsonStructure(['token'])
+            ->json('token');
 
-        Excel::assertDownloaded('kpi-sheet_2026-09-30_to_2026-10-08.xlsx', function (EmployeeKpiExport $export) {
+        // the queue is synchronous in the tests, so the job has already stored the workbook
+        Excel::assertStored(GenerateKpiExport::path($token), 'local', function (EmployeeKpiExport $export) {
             $sheets = collect($export->sheets())->keyBy(fn (EmployeeKpiUserSheet $sheet) => $sheet->title());
             $one = $sheets['M289']->array();
             $two = $sheets['Agent Two']->array();
@@ -231,10 +244,11 @@ class EmployeeKpiTest extends TestCase
             $this->assertSame(['Agent Two', 'M289'], $sheets->keys()->all());
             $this->assertSame(EmployeeKpiUserSheet::HEADINGS, $one[0]);
 
-            // the sheet holds the scored activity: outbound calls at 135 of 175, the approximate comment target stays off it
-            $this->assertSame(["Agent One\n(M289)", 'Doer', 'Outbound Calls', 175, 135, 135 / 175, 1, 77.14, 'Monthly'], $one[1]);
-            $this->assertSame([null, null, 'Total Score', null, null, null, 1, 77.14, null], $one[2]);
-            $this->assertCount(3, $one);
+            // outbound calls at 135 of 175 carry 70%, the Facebook comments at 26 of 35 the other 30%, as formulas
+            $this->assertSame(["Agent One\n(M289)", 'Doer', 'Outbound Calls', 175, 135, '=IF(D2=0,0,MIN(E2/D2,1))', 0.7, '=F2*G2*100', 'Monthly'], $one[1]);
+            $this->assertSame([null, null, 'Facebook (Comments)', 35, 26, '=IF(D3=0,0,MIN(E3/D3,1))', 0.3, '=F3*G3*100', 'Monthly'], $one[2]);
+            $this->assertSame([null, null, 'Total Score', null, null, null, '=SUM(G2:G3)', '=ROUND(SUM(H2:H3),2)', null], $one[3]);
+            $this->assertCount(4, $one);
 
             $this->assertSame(['Agent Two', 'Doer', 'No target set in this period', null, null, null, null, null, 'Monthly'], $two[1]);
             $this->assertCount(2, $two);
@@ -246,60 +260,222 @@ class EmployeeKpiTest extends TestCase
         $this->actingAs($this->agent)->get('/kpi/export?preset=custom&from=2026-09-30&to=2026-10-08')->assertForbidden();
     }
 
+    public function test_export_is_queued_and_downloaded_once_when_ready(): void
+    {
+        $this->seedAgentOne();
+
+        $token = $this->actingAs($this->manager)->get('/kpi/export?preset=custom&from=2026-09-30&to=2026-10-08')->assertStatus(202)->json('token');
+        $path = GenerateKpiExport::path($token);
+
+        Storage::disk('local')->assertExists($path);
+        $this->get('/kpi/export?token='.$token)->assertOk()->assertExactJson(['status' => 'done']);
+
+        // somebody else cannot see it, ask for it or take it
+        $this->actingAs(User::factory()->create(['usages_sector' => 'corporate']))->get('/kpi/export?token='.$token)->assertNotFound();
+        $this->get('/kpi/export?token='.$token.'&download=1')->assertNotFound();
+
+        $response = $this->actingAs($this->manager)->get('/kpi/export?token='.$token.'&download=1')
+            ->assertOk()
+            ->assertDownload('kpi-sheet_2026-09-30_to_2026-10-08.xlsx');
+
+        // the file goes as soon as it has been sent (which a test response never does), and the token is spent
+        $deleteAfterSend = new \ReflectionProperty(BinaryFileResponse::class, 'deleteFileAfterSend');
+        $this->assertTrue($deleteAfterSend->getValue($response->baseResponse));
+        Storage::disk('local')->delete($path);
+        $this->get('/kpi/export?token='.$token.'&download=1')->assertNotFound();
+        $this->get('/kpi/export?token='.$token)->assertNotFound();
+
+        // a range that is too long is refused before anything is queued
+        $this->get('/kpi/export?preset=custom&from=2020-01-01&to=2026-10-08')->assertStatus(302);
+    }
+
+    public function test_failed_export_is_reported_to_the_page(): void
+    {
+        $this->seedAgentOne();
+        Cache::put(GenerateKpiExport::cacheKey('abc'), ['status' => 'pending', 'user_id' => $this->manager->id], 60);
+
+        (new GenerateKpiExport('abc', $this->manager->id, '2026-10-01', '2026-10-06', null, 'month'))->failed(new \RuntimeException('boom'));
+
+        $this->actingAs($this->manager)->get('/kpi/export?token=abc')->assertOk()->assertJsonPath('status', 'failed');
+    }
+
+    public function test_purge_command_removes_exports_nobody_downloaded(): void
+    {
+        $disk = Storage::disk('local');
+        $disk->put(GenerateKpiExport::path('old'), 'x');
+        $disk->put(GenerateKpiExport::path('new'), 'x');
+        touch($disk->path(GenerateKpiExport::path('old')), now()->subHour()->getTimestamp());
+
+        $this->artisan('kpi:purge-exports')->assertSuccessful();
+
+        $disk->assertMissing(GenerateKpiExport::path('old'));
+        $disk->assertExists(GenerateKpiExport::path('new'));
+
+        $disk->delete(GenerateKpiExport::path('new'));
+    }
+
     public function test_exported_workbook_opens_with_a_tab_per_user_and_capped_lines(): void
     {
         $this->seedAgentOne();
         // two users without an employee id under the same name, and an id a tab name cannot hold
         $namesake = User::factory()->create(['usages_sector' => 'field', 'name' => 'Agent Two', 'employee_id' => null, 'created_at' => '2026-09-01 09:00:00']);
-        // approximate targets only get a line on the sheet once they are given a weight
-        config(['kpi.weights.inbound_calls' => 1, 'kpi.weights.message_replies' => 1]);
         $messages = fn (int $target) => [['social_platform_id' => $this->facebook->id, 'message_replies' => $target]];
         DailyTarget::setForUsers([$namesake->id], ['2026-10-06'], ['outbound_calls' => 1000, 'inbound_calls' => 2, 'platforms' => $messages(2)]);
         $third = User::factory()->create(['usages_sector' => 'field', 'name' => 'Agent Three', 'employee_id' => 'IT/[7]:9', 'created_at' => '2026-09-01 09:00:00']);
         DailyTarget::setForUsers([$third->id], ['2026-10-06'], ['outbound_calls' => 10, 'inbound_calls' => 0, 'platforms' => $messages(30)]);
         $this->report($third, '2026-10-06', 25);
 
-        $response = $this->actingAs($this->manager)->get('/kpi/export?preset=today')->assertOk();
+        $token = $this->actingAs($this->manager)->get('/kpi/export?preset=today')->assertStatus(202)->json('token');
+        $response = $this->get('/kpi/export?token='.$token.'&download=1')->assertOk();
 
         $book = IOFactory::load($response->baseResponse->getFile()->getPathname());
+        @unlink($response->baseResponse->getFile()->getPathname());
 
         $this->assertSame(['Agent Two', 'Agent Two (2)', 'IT  7  9', 'M289'], $book->getSheetNames());
 
         $sheet = $book->getSheet(2);
 
-        // 25 calls of 10 count as the full weight and no more, the 8 replies of 30 for their part
+        // 25 calls of 10 count as the full 70% and no more, the 8 replies of 30 for their part of the other 30%
         $this->assertSame('Outbound Calls', $sheet->getCell('C2')->getValue());
-        $this->assertEquals(1, $sheet->getCell('F2')->getValue());
-        $this->assertEquals(0.25, $sheet->getCell('G2')->getValue());
+        $this->assertEquals(1, $sheet->getCell('F2')->getCalculatedValue());
+        $this->assertEquals(0.7, $sheet->getCell('G2')->getValue());
+        $this->assertEquals(70, $sheet->getCell('H2')->getCalculatedValue());
         $this->assertSame('Facebook (Message Replies)', $sheet->getCell('C3')->getValue());
         $this->assertEquals(30, $sheet->getCell('D3')->getValue());
         $this->assertEquals(8, $sheet->getCell('E3')->getValue());
-        $this->assertEquals(0.75, $sheet->getCell('G3')->getValue());
+        $this->assertEquals(0.3, $sheet->getCell('G3')->getValue());
         // the target of 0 for inbound calls is nothing to measure against, so it has no line
         $this->assertSame('Total Score', $sheet->getCell('C4')->getValue());
-        $this->assertEquals(45, $sheet->getCell('H4')->getValue());
+        $this->assertEquals(1, $sheet->getCell('G4')->getCalculatedValue());
+        $this->assertEquals(78, $sheet->getCell('H4')->getCalculatedValue());
         $this->assertSame('Daily', $sheet->getCell('I2')->getValue());
         $this->assertSame(['A2:A3', 'B2:B3'], array_keys($sheet->getMergeCells()));
         $this->assertSame('0%', $sheet->getStyle('G2')->getNumberFormat()->getFormatCode());
 
-        // weights are whole percents adding up to 100, and a line too small for one still gets a percent
-        $small = $book->getSheet(0);
-        $this->assertEquals([0.98, 0.01, 0.01, 1], [$small->getCell('G2')->getValue(), $small->getCell('G3')->getValue(), $small->getCell('G4')->getValue(), $small->getCell('G5')->getValue()]);
+        // an admin changing a weight on the sheet moves the total with it
+        $sheet->getCell('G2')->setValue(0.5);
+        $sheet->getCell('G3')->setValue(0.5);
+        \PhpOffice\PhpSpreadsheet\Calculation\Calculation::getInstance($book)->clearCalculationCache();
+        // 50 + 50 x 8/30
+        $this->assertEquals(63.33, round($sheet->getCell('H4')->getCalculatedValue(), 2));
+
+        // the 30 left over is split equally and in whole percents among the others
+        $shared = collect($book->getAllSheets())->first(fn ($tab) => $tab->getCell('D2')->getValue() == 1000);
+        $this->assertSame('Outbound Calls', $shared->getCell('C2')->getValue());
+        $this->assertEquals([0.7, 0.15, 0.15], [$shared->getCell('G2')->getValue(), $shared->getCell('G3')->getValue(), $shared->getCell('G4')->getValue()]);
+        $this->assertEquals(1, $shared->getCell('G5')->getCalculatedValue());
 
         $this->assertSame('Monthly', EmployeeKpiExport::frequency('2026-10-01', '2026-10-31'));
         $this->assertSame('Yearly', EmployeeKpiExport::frequency('2026-01-01', '2026-12-31'));
 
         // this month is monthly even with only its first six days gone, a typed range goes by its length
         Excel::fake();
-        $this->actingAs($this->manager)->get('/kpi/export?preset=month')->assertOk();
-        Excel::assertDownloaded('kpi-sheet_2026-10-01_to_2026-10-06.xlsx', fn (EmployeeKpiExport $export) => $export->sheets()[0]->array()[1][8] === 'Monthly');
+        $token = $this->actingAs($this->manager)->get('/kpi/export?preset=month')->assertStatus(202)->json('token');
+        Excel::assertStored(GenerateKpiExport::path($token), 'local', fn (EmployeeKpiExport $export) => $export->sheets()[0]->array()[1][8] === 'Monthly');
 
-        $this->actingAs($this->manager)->get('/kpi/export')->assertOk();
-        Excel::assertDownloaded('kpi-sheet_2026-10-01_to_2026-10-06.xlsx', fn (EmployeeKpiExport $export) => $export->sheets()[0]->array()[1][8] === 'Monthly');
+        $token = $this->actingAs($this->manager)->get('/kpi/export')->assertStatus(202)->json('token');
+        Excel::assertStored(GenerateKpiExport::path($token), 'local', fn (EmployeeKpiExport $export) => $export->sheets()[0]->array()[1][8] === 'Monthly');
 
         $this->assertSame('Weekly', EmployeeKpiExport::frequency('2026-10-01', '2026-10-06', 'custom'));
         $this->assertSame('Weekly', EmployeeKpiExport::frequency('2026-10-03', '2026-10-06', 'week'));
         $this->assertSame('Monthly', EmployeeKpiExport::frequency('2026-09-22', '2026-10-06', '15days'));
+    }
+
+    public function test_a_strong_day_makes_up_for_a_weak_one_within_the_range(): void
+    {
+        // 100 a day: 80 on the first day and 120 on the second is 200 of 200, the full score
+        DailyTarget::setForUsers([$this->agent->id], ['2026-10-03', '2026-10-05'], ['outbound_calls' => 100]);
+        $this->report($this->agent, '2026-10-03', 80);
+        $this->report($this->agent, '2026-10-05', 120);
+
+        $row = $this->kpi()->detail($this->agent, '2026-10-01', '2026-10-06');
+
+        $this->assertSame(200, $row['target_total']);
+        $this->assertSame(200, $row['actual_total']);
+        $this->assertEquals(100, $row['pct']);
+        $this->assertEquals(100, $row['score']);
+        $this->assertEquals(1, $row['lines']['outbound_calls']['weight']);
+
+        // 80 and 70 of 200 is short, and the score says so
+        $this->report($this->agent, '2026-10-05', 70);
+        $this->assertEquals(75, $this->kpi()->detail($this->agent, '2026-10-01', '2026-10-06')['score']);
+    }
+
+    public function test_outbound_calls_carry_their_share_and_the_rest_is_split_equally(): void
+    {
+        $line = fn (int $target, int $actual, string $metric = 'comments') => ['metric' => $metric, 'target' => $target, 'actual' => $actual];
+
+        // outbound calls alone carry everything
+        $only = EmployeeKpiService::lines(['outbound_calls' => $line(10, 5, 'outbound_calls')], 70);
+        $this->assertEquals(1, $only['outbound_calls']['weight']);
+        $this->assertEquals(50, $only['outbound_calls']['score']);
+
+        // two others share the 30, three share it in tens
+        $two = EmployeeKpiService::lines(['outbound_calls' => $line(10, 10, 'outbound_calls'), 'a' => $line(10, 10), 'b' => $line(10, 0)], 70);
+        $this->assertEquals([0.7, 0.15, 0.15], array_column($two, 'weight'));
+        $this->assertEquals(85, array_sum(array_column($two, 'score')));
+
+        $three = EmployeeKpiService::lines(['outbound_calls' => $line(10, 10, 'outbound_calls'), 'a' => $line(1, 1), 'b' => $line(1, 1), 'c' => $line(1, 1)], 70);
+        $this->assertEquals([0.7, 0.1, 0.1, 0.1], array_column($three, 'weight'));
+
+        // 300% on the others cannot cover the outbound calls: 70 x 0.5 + 30 x 1
+        $short = EmployeeKpiService::lines(['outbound_calls' => $line(10, 5, 'outbound_calls'), 'a' => $line(10, 30)], 70);
+        $this->assertEquals(65, array_sum(array_column($short, 'score')));
+
+        // a share that does not divide leaves the odd percents to the first ones, and the weights still add up to 100
+        $odd = EmployeeKpiService::lines(['outbound_calls' => $line(10, 10, 'outbound_calls'), 'a' => $line(1, 1), 'b' => $line(1, 1), 'c' => $line(1, 1), 'd' => $line(1, 1), 'e' => $line(1, 1), 'f' => $line(1, 1), 'g' => $line(1, 1)], 70);
+        $this->assertEquals(1, round(array_sum(array_column($odd, 'weight')), 6));
+
+        // no outbound target: the others share the whole, and a target of 0 is no line
+        $none = EmployeeKpiService::lines(['outbound_calls' => $line(0, 4, 'outbound_calls'), 'a' => $line(10, 10), 'b' => $line(10, 5)], 70);
+        $this->assertSame(['a', 'b'], array_keys($none));
+        $this->assertEquals([0.5, 0.5], array_column($none, 'weight'));
+        $this->assertSame([], EmployeeKpiService::lines([], 70));
+
+        // the share comes from config
+        config(['kpi.outbound_share' => 50]);
+        $this->seedAgentOne();
+        $row = $this->kpi()->detail($this->agent, '2026-09-30', '2026-10-08');
+        $this->assertEquals([0.5, 0.5], array_column($row['lines'], 'weight'));
+    }
+
+    public function test_targets_can_be_set_for_a_month_instead_of_each_day(): void
+    {
+        config(['kpi.target_mode' => 'period']);
+        $this->seedAgentOne();
+
+        // October has 26 working days. Agent One was asked for 3.5 of them by the 6th: the 1st, 3rd, 6th,
+        // half of the 5th, nothing on the day off or the day of leave
+        PeriodTarget::setForUser($this->agent->id, '2026-10-01', [
+            'outbound_calls' => 1040,
+            'platform:'.$this->facebook->id.':comments' => 260,
+            'inbound_calls' => 0,
+        ]);
+
+        $row = $this->kpi()->detail($this->agent, '2026-10-01', '2026-10-31');
+        $comments = 'platform:'.$this->facebook->id.':comments';
+
+        $this->assertSame(140, $row['target_total']);
+        $this->assertSame(135, $row['actual_total']);
+        $this->assertEquals(96.4, $row['pct']);
+        $this->assertEquals(89.8, $row['score']);
+        $this->assertSame(['outbound_calls', $comments], array_keys($row['lines']));
+        $this->assertSame(35, $row['lines'][$comments]['target']);
+        $this->assertSame(26, $row['lines'][$comments]['actual']);
+        // no target is shown for a day, what was reported on it is
+        $this->assertNull($row['days'][0]['target']);
+        $this->assertSame(30, $row['days'][0]['actual']);
+
+        // a user without a monthly target has no score, whatever daily targets were set for them
+        $this->assertNull($this->kpi()->detail($this->otherAgent, '2026-10-01', '2026-10-31')['score']);
+
+        // a month still to come asks nothing of anyone
+        PeriodTarget::setForUser($this->agent->id, '2026-11-01', ['outbound_calls' => 500]);
+        $this->assertSame(140, $this->kpi()->detail($this->agent, '2026-10-01', '2026-11-30')['target_total']);
+
+        // back to the daily targets
+        config(['kpi.target_mode' => 'daily']);
+        $this->assertSame(175, $this->kpi()->detail($this->agent, '2026-09-30', '2026-10-08')['target_total']);
     }
 
     public function test_month_is_frozen_once_it_is_over(): void

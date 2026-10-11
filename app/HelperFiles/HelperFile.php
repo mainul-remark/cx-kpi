@@ -105,7 +105,7 @@ class HelperFile
 
     // -------------------------------------------------------------------------
 
-    private static function startQueueWorker(): void
+    public static function startQueueWorker(): void
     {
         $php     = PHP_BINARY;
         $artisan = base_path('artisan');

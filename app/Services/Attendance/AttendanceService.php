@@ -42,34 +42,52 @@ class AttendanceService
     }
 
     /**
-     * Whether the user has to file a daily report before using the system.
+     * The last day the user checked in on before today, when they filed no daily report for it (Y-m-d), else null.
      *
-     * That is so when they worked today, or checked in on a day and never checked out (even when the system closed it
-     * as forgotten), and no report exists on or after that day. Filing today's report clears it.
+     * Only that latest day counts: older days without a report are not asked for.
      */
-    public function mustFileReport(User $user): bool
+    public function owedReportDate(User $user): ?string
     {
-        $days = $user->attendanceSessions()
-            ->where(fn ($query) => $query->whereNull('checked_out_at')->orWhere('work_date', $this->today()))
-            ->pluck('work_date')
-            ->map(fn ($date) => min(Carbon::parse($date)->toDateString(), today()->toDateString()));
+        $last = $user->attendanceSessions()
+            ->where('work_date', '<', $this->today())
+            ->max('work_date');
 
-        if ($days->isEmpty()) {
-            return false;
+        if ($last === null) {
+            return null;
         }
 
-        $lastReport = DB::table('daily_reports')->where('user_id', $user->id)->max('report_date');
+        $last = Carbon::parse($last)->toDateString();
 
-        return $lastReport === null || $days->contains(fn (string $day) => $day > substr((string) $lastReport, 0, 10));
+        $reported = DB::table('daily_reports')
+            ->where('user_id', $user->id)
+            ->whereDate('report_date', $last)
+            ->exists();
+
+        return $reported ? null : $last;
     }
 
     /**
-     * Give the sessions the user forgot to end a checkout of 11:59 pm on their own day, and keep them marked as
-     * "did not check out". Called when the user files a daily report. Returns how many were set.
+     * The day the user's next report is for, picked by the system: the last day they checked in on without
+     * reporting, else today. The user never chooses it.
+     */
+    public function nextReportDate(User $user): string
+    {
+        return $this->owedReportDate($user) ?? today()->toDateString();
+    }
+
+    /** Whether the user has to file the report of their last active day before checking in or using the system. */
+    public function mustFileReport(User $user): bool
+    {
+        return $this->owedReportDate($user) !== null;
+    }
+
+    /**
+     * Give the sessions of a reported day the user forgot to end a checkout of 11:59 pm on that day, and keep them
+     * marked as "did not check out". Returns how many were set.
      *
      * The session stays closed by the system, so the day still reads Incomplete and its hours stay unknown.
      */
-    public function finalizeForgotten(User $user): int
+    public function finalizeForgotten(User $user, string $date): int
     {
         $timezone = config('attendance.timezone');
         $count = 0;
@@ -77,6 +95,7 @@ class AttendanceService
         $user->attendanceSessions()
             ->whereNull('checked_out_at')
             ->whereNull('adjusted_by')
+            ->where('work_date', $date)
             ->where('work_date', '<', $this->today())
             ->get()
             ->each(function (AttendanceSession $session) use ($timezone, &$count) {
@@ -225,31 +244,50 @@ class AttendanceService
     }
 
     /**
-     * The check-in days of a range, newest first, ready for the attendance page.
+     * One page of the check-in days of a range, newest first, ready for the attendance page.
      *
+     * A day is one user's sessions of a date, and it is the days that are paged, so a day is never cut in two.
      * A manager also gets the places and addresses of the check; the user only their own times.
      *
-     * @return array{rows: array<int, array<string, mixed>>, truncated: bool}
+     * @return array{rows: array<int, array<string, mixed>>, meta: array<string, int>}
      */
-    public function sessions(string $from, string $to, ?int $userId, bool $forManager): array
+    public function sessions(string $from, string $to, ?int $userId, bool $forManager, int $page = 1, ?int $perPage = null): array
     {
-        $limit = (int) config('attendance.max_listed_sessions');
+        $perPage ??= (int) config('attendance.per_page');
         $timezone = config('attendance.timezone');
 
-        $sessions = AttendanceSession::query()
-            ->with('user:id,name')
+        // the days of the page: the latest check in of a day puts it first among the days of its date
+        $days = AttendanceSession::query()
+            ->select(['user_id', 'work_date'])
+            ->selectRaw('MAX(checked_in_at) as last_in')
             ->whereBetween('work_date', [$from, $to])
             ->when($userId, fn ($query) => $query->where('user_id', $userId))
+            ->groupBy('user_id', 'work_date')
             ->orderByDesc('work_date')
-            ->orderByDesc('checked_in_at')
-            ->limit($limit + 1)
+            ->orderByDesc('last_in')
+            ->orderBy('user_id')
+            ->paginate($perPage, ['*'], 'page', $page);
+
+        $pairs = collect($days->items())->map(fn ($day) => [
+            'user_id' => (int) $day->user_id,
+            'work_date' => Carbon::parse($day->work_date)->toDateString(),
+        ]);
+
+        $sessions = $pairs->isEmpty() ? collect() : AttendanceSession::query()
+            ->with('user:id,name')
+            ->where(function ($query) use ($pairs) {
+                foreach ($pairs as $pair) {
+                    $query->orWhere(fn ($day) => $day->where('user_id', $pair['user_id'])->where('work_date', $pair['work_date']));
+                }
+            })
             ->get();
 
-        $truncated = $sessions->count() > $limit;
+        $byDay = $sessions->groupBy(fn (AttendanceSession $session) => $session->user_id.'|'.$session->work_date->toDateString());
 
         // one row per user and day: the first check in, the last check out and the worked time in between
-        $rows = $sessions->take($limit)
-            ->groupBy(fn (AttendanceSession $session) => $session->user_id.'|'.$session->work_date->toDateString())
+        $rows = $pairs
+            ->map(fn (array $pair) => $byDay->get($pair['user_id'].'|'.$pair['work_date']))
+            ->filter()
             ->map(function ($day) use ($forManager, $timezone) {
                 $day = $day->sortBy('checked_in_at')->values();
                 $first = $day->first();
@@ -291,7 +329,17 @@ class AttendanceService
                 return $row;
             })->values()->all();
 
-        return ['rows' => $rows, 'truncated' => $truncated];
+        return [
+            'rows' => $rows,
+            'meta' => [
+                'page' => $days->currentPage(),
+                'per_page' => $days->perPage(),
+                'total' => $days->total(),
+                'last_page' => $days->lastPage(),
+                'from' => $days->firstItem() ?? 0,
+                'to' => $days->lastItem() ?? 0,
+            ],
+        ];
     }
 
     /** The status of a day: still open wins, then a forgotten check out, then a manager correction. */
@@ -326,23 +374,38 @@ class AttendanceService
     }
 
     /**
-     * A manager fixes when a session ended, for example one the user forgot to end.
+     * A manager fixes when a session started and ended, for example one the user forgot to end.
      *
-     * @throws ValidationException when the time falls before the check in or in the future
+     * The check in is only changed when one is given, and stays on the day the session belongs to.
+     *
+     * @throws ValidationException when a time is in the future, the check in leaves its day or the check out precedes it
      */
-    public function adjust(AttendanceSession $session, User $manager, Carbon $checkedOutAt, string $note): AttendanceSession
+    public function adjust(AttendanceSession $session, User $manager, Carbon $checkedOutAt, string $note, ?Carbon $checkedInAt = null): AttendanceSession
     {
+        if ($checkedInAt !== null) {
+            $day = $checkedInAt->copy()->timezone(config('attendance.timezone'))->toDateString();
+
+            if ($checkedInAt->isFuture() || $day !== $session->work_date->toDateString()) {
+                throw ValidationException::withMessages([
+                    'checked_in_at' => 'The check in must be on '.$session->work_date->format('d M Y').' and not in the future.',
+                ]);
+            }
+        }
+
+        $effectiveIn = $checkedInAt ?? $session->checked_in_at;
+
         // the form picks a minute, the check in keeps its seconds: compare on the minute
-        if ($checkedOutAt->lt($session->checked_in_at->copy()->startOfMinute()) || $checkedOutAt->isFuture()) {
+        if ($checkedOutAt->lt($effectiveIn->copy()->startOfMinute()) || $checkedOutAt->isFuture()) {
             throw ValidationException::withMessages([
                 'checked_out_at' => 'The check out must be after the check in, and not in the future.',
             ]);
         }
 
-        return DB::transaction(function () use ($session, $manager, $checkedOutAt, $note) {
-            $before = $session->only(['checked_out_at', 'close_reason']);
+        return DB::transaction(function () use ($session, $manager, $checkedOutAt, $checkedInAt, $note) {
+            $before = $session->only(['checked_in_at', 'checked_out_at', 'close_reason']);
 
             $session->update([
+                'checked_in_at' => $checkedInAt ?? $session->checked_in_at,
                 'checked_out_at' => $checkedOutAt,
                 'close_reason' => AttendanceSession::REASON_ADMIN,
                 'adjusted_by' => $manager->id,
@@ -352,7 +415,7 @@ class AttendanceService
             activity('data')
                 ->performedOn($session)
                 ->causedBy($manager)
-                ->withProperties(['old' => $before, 'attributes' => $session->only(['checked_out_at', 'close_reason']), 'note' => $note])
+                ->withProperties(['old' => $before, 'attributes' => $session->only(['checked_in_at', 'checked_out_at', 'close_reason']), 'note' => $note])
                 ->log('attendance session adjusted');
 
             return $session;

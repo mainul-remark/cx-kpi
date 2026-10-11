@@ -102,25 +102,56 @@ class DashboardTest extends TestCase
         $this->assertNull($inbound['target']);
         $this->assertNull($inbound['achievement_pct']);
 
-        $users = collect($response->json('users'))->keyBy('name');
-        $this->assertCount(2, $users);
+        $this->assertArrayNotHasKey('users', $response->json());
+        $this->assertArrayNotHasKey('attendance', $response->json());
+    }
+
+    public function test_people_section_pages_sorts_and_searches_users_on_the_server(): void
+    {
+        $range = ['preset' => 'custom', 'from' => '2026-10-05', 'to' => '2026-10-06', 'section' => 'people'];
+
+        $response = $this->data($this->manager, $range)
+            ->assertOk()
+            ->assertJsonPath('meta.total', 2)
+            ->assertJsonPath('meta.last_page', 1)
+            ->assertJsonPath('insights.users', 2);
+
+        $users = collect($response->json('rows'))->keyBy('name');
         $this->assertSame(2, $users['Agent One']['reports']);
         $this->assertSame(70, $users['Agent One']['outbound_calls']);
         // 70 calls against the target of 100, the approximate comment target of 20 is not scored
         $this->assertSame(100, $users['Agent One']['target_total']);
         $this->assertEquals(70, $users['Agent One']['achievement_pct']);
-        $this->assertSame('Agent One', $response->json('users.0.name'));
-    }
+        $this->assertNotNull($users['Agent One']['score']);
+        // the best score first by default
+        $this->assertSame('Agent One', $response->json('rows.0.name'));
 
+        $this->data($this->manager, $range + ['per_page' => 5, 'sort' => 'name', 'dir' => 'desc'])
+            ->assertJsonPath('rows.0.name', 'Agent Two');
+
+        $this->data($this->manager, $range + ['search' => 'two'])
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('rows.0.name', 'Agent Two')
+            // the spread of the team does not follow the search
+            ->assertJsonPath('insights.users', 2);
+
+        // a page past the end falls back to the last one
+        $this->data($this->manager, $range + ['page' => 9])->assertJsonPath('meta.page', 1);
+
+        $this->data($this->manager, $range + ['export' => 1, 'sort' => 'bogus'])->assertStatus(422)->assertJsonValidationErrors(['sort']);
+        $this->data($this->manager, $range + ['export' => 1])->assertJsonCount(2, 'rows');
+    }
     public function test_corporate_user_can_narrow_the_dashboard_to_one_user(): void
     {
         $response = $this->data($this->manager, ['preset' => 'today', 'user_id' => $this->otherAgent->id])
             ->assertOk()
             ->assertJsonPath('range.from', '2026-10-06')
-            ->assertJsonPath('submissions.expected', 1)
-            ->assertJsonCount(1, 'users');
+            ->assertJsonPath('submissions.expected', 1);
 
         $this->assertSame(10, collect($response->json('kpis'))->firstWhere('key', 'outbound_calls')['actual']);
+
+        $this->data($this->manager, ['preset' => 'today', 'user_id' => $this->otherAgent->id, 'section' => 'people'])
+            ->assertJsonCount(1, 'rows');
     }
 
     public function test_field_user_sees_only_their_own_reports_and_no_targets(): void
@@ -128,7 +159,6 @@ class DashboardTest extends TestCase
         $response = $this->data($this->otherAgent, ['preset' => 'today', 'user_id' => $this->agent->id])
             ->assertOk()
             ->assertJsonPath('show_targets', false)
-            ->assertJsonPath('users', null)
             ->assertJsonPath('platforms.0.actual', 3)
             ->assertJsonPath('platforms.0.target', null)
             ->assertJsonPath('submissions.expected', 1);
@@ -136,6 +166,15 @@ class DashboardTest extends TestCase
         $outbound = collect($response->json('kpis'))->firstWhere('key', 'outbound_calls');
         $this->assertSame(10, $outbound['actual']);
         $this->assertNull($outbound['target']);
+
+        // their own score only, with no target to show, and nothing of the team's day
+        $people = $this->data($this->otherAgent, ['preset' => 'today', 'user_id' => $this->agent->id, 'section' => 'people'])->assertOk();
+        $this->assertCount(1, $people->json('rows'));
+        $this->assertSame('Agent Two', $people->json('rows.0.name'));
+        $this->assertNull($people->json('rows.0.target_total'));
+        $this->assertNull($people->json('rows.0.achievement_pct'));
+
+        $this->data($this->otherAgent, ['section' => 'live'])->assertJsonPath('live', null);
     }
 
     public function test_periods_follow_the_saturday_week_and_skip_off_days_for_due_reports(): void
@@ -173,38 +212,56 @@ class DashboardTest extends TestCase
             ->assertJsonPath('submissions.pct', null);
     }
 
-    public function test_attendance_sheet_marks_each_day_of_each_field_user(): void
+    public function test_attendance_section_adds_up_the_team_and_lists_the_most_missed_reports(): void
     {
         Holiday::createOrUpdateHoliday(['holiday_date' => '2026-10-04', 'title' => 'Govt. holiday']);
 
         // Friday the 2nd to Wednesday the 7th: an off day, a working day, a holiday, two working days and tomorrow
-        $response = $this->data($this->manager, ['preset' => 'custom', 'from' => '2026-10-02', 'to' => '2026-10-07'])
+        // Agent One is OAPPPF and Agent Two OAHAPF, a report on a holiday still counts as present
+        $response = $this->data($this->manager, ['preset' => 'custom', 'from' => '2026-10-02', 'to' => '2026-10-07', 'section' => 'attendance'])
             ->assertOk()
-            ->assertJsonCount(6, 'attendance.days')
-            ->assertJsonPath('attendance.days.2.holiday', 'Govt. holiday');
+            ->assertJsonCount(6, 'daily')
+            ->assertJsonPath('daily.2.holiday', 'Govt. holiday')
+            ->assertJsonPath('summary.users', 2)
+            ->assertJsonPath('summary.present', 4)
+            ->assertJsonPath('summary.absent', 3)
+            ->assertJsonPath('missing.total', 2)
+            // the user who missed most comes first
+            ->assertJsonPath('missing.rows.0.name', 'Agent Two')
+            ->assertJsonPath('missing.rows.0.absent', 2)
+            ->assertJsonPath('missing.rows.0.dates', ['2026-10-03', '2026-10-05']);
 
-        $rows = collect($response->json('attendance.rows'))->keyBy('name');
-
-        $this->assertCount(2, $rows);
-        // a report sent on the holiday still counts as present
-        $this->assertSame('OAPPPF', $rows['Agent One']['marks']);
-        $this->assertSame(3, $rows['Agent One']['present']);
-        $this->assertSame(1, $rows['Agent One']['absent']);
-        $this->assertEquals(75, $rows['Agent One']['pct']);
-        $this->assertSame('OAHAPF', $rows['Agent Two']['marks']);
-        $this->assertSame(2, $rows['Agent Two']['absent']);
+        $this->assertEquals(57.1, $response->json('summary.pct'));
+        // Agent One reported on the 4th, 5th and 6th, Agent Two on the 6th only
+        $this->assertSame([0, 0, 1, 1, 2, 0], array_column($response->json('daily'), 'present'));
 
         // days before a user was added are not held against them
         $newcomer = User::factory()->create(['usages_sector' => 'field', 'name' => 'Agent Three', 'created_at' => '2026-10-06 09:00:00']);
-        $row = collect($this->data($this->manager, ['preset' => 'custom', 'from' => '2026-10-02', 'to' => '2026-10-07', 'user_id' => $newcomer->id])
-            ->json('attendance.rows'))->sole();
+        $this->data($this->manager, ['preset' => 'custom', 'from' => '2026-10-02', 'to' => '2026-10-07', 'user_id' => $newcomer->id, 'section' => 'attendance'])
+            ->assertJsonPath('summary.absent', 1);
 
-        $this->assertSame('ONHNAF', $row['marks']);
-        $this->assertSame(1, $row['absent']);
-
-        $this->data($this->agent, ['preset' => 'today'])->assertJsonPath('attendance', null);
+        // a field user gets their own attendance, whoever they ask for
+        $this->data($this->agent, ['preset' => 'custom', 'from' => '2026-10-02', 'to' => '2026-10-07', 'user_id' => $this->otherAgent->id, 'section' => 'attendance'])
+            ->assertJsonPath('summary.users', 1)
+            ->assertJsonPath('summary.present', 3);
     }
 
+    public function test_live_section_shows_where_the_team_stands_today(): void
+    {
+        UserLeave::setForUsers([$this->otherAgent->id], ['2026-10-06'], ['portion' => 'full', 'type' => 'sick']);
+        UserLeave::setForUsers([$this->agent->id], ['2026-10-07'], ['portion' => 'full', 'type' => 'sick'], null, UserLeave::STATUS_PENDING);
+
+        // the 6th is a Tuesday: Agent One has reported, Agent Two is on leave
+        $this->data($this->manager, ['section' => 'live'])
+            ->assertOk()
+            ->assertJsonPath('live.working_day', true)
+            ->assertJsonPath('live.field_users', 2)
+            ->assertJsonPath('live.reported', 2)
+            ->assertJsonPath('live.on_leave', 1)
+            ->assertJsonPath('live.due', 1)
+            ->assertJsonPath('live.pending_leave_days', 1)
+            ->assertJsonPath('live.checked_in', 0);
+    }
     public function test_invalid_filters_are_rejected(): void
     {
         $this->data($this->manager, ['preset' => 'custom'])->assertStatus(422)->assertJsonValidationErrors(['from', 'to']);
@@ -213,6 +270,7 @@ class DashboardTest extends TestCase
         $this->data($this->manager, ['preset' => 'custom', 'from' => '2024-01-01', 'to' => '2026-10-01'])
             ->assertStatus(422)->assertJsonValidationErrors(['to']);
         $this->data($this->manager, ['preset' => 'year'])->assertStatus(422)->assertJsonValidationErrors(['preset']);
+        $this->data($this->manager, ['section' => 'everything'])->assertStatus(422)->assertJsonValidationErrors(['section']);
     }
 
     private function data(User $user, array $filters): TestResponse

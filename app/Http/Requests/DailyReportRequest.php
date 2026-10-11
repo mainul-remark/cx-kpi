@@ -20,10 +20,12 @@ class DailyReportRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        // a report can only be changed by the user it belongs to
+        // a report is changed by the user it belongs to, or by a corporate user from the admin panel
         $report = $this->route('daily_report');
 
-        return !$report || (int) $report->user_id === (int) $this->user()->id;
+        return !$report
+            || (int) $report->user_id === (int) $this->user()->id
+            || $this->user()->usages_sector === 'corporate';
     }
 
     /**
@@ -83,7 +85,7 @@ class DailyReportRequest extends FormRequest
             function (Validator $validator) {
                 // a half day of leave is still worked, a full day is not
                 $onLeave = UserLeave::query()
-                    ->where('user_id', $this->user()->id)
+                    ->where('user_id', $this->reportOwnerId())
                     ->whereDate('leave_date', $this->reportDate())
                     ->where('portion', UserLeave::PORTION_FULL)
                     ->where('status', UserLeave::STATUS_APPROVED)
@@ -97,12 +99,19 @@ class DailyReportRequest extends FormRequest
     }
 
     /**
-     * The day this report is for, picked by the system: the report's own day on update, else today.
+     * The day this report is for, picked by the system: the report's own day on update, else the oldest day the user
+     * checked in on without reporting (today when there is none).
      */
     public function reportDate(): string
     {
         return $this->reportDate ??= $this->route('daily_report')?->report_date->toDateString()
-            ?? today()->toDateString();
+            ?? app(\App\Services\Attendance\AttendanceService::class)->nextReportDate($this->user());
+    }
+
+    /** The user the report belongs to: its owner on update, else the signed-in user. */
+    private function reportOwnerId(): int
+    {
+        return (int) ($this->route('daily_report')?->user_id ?? $this->user()->id);
     }
 
     /**

@@ -74,9 +74,11 @@ class EmployeeKpiExport implements WithMultipleSheets
     }
 
     /**
-     * The lines of a user: an activity that had a target, with its share of the user's whole target as weight.
+     * The lines of a user: an activity that had a target, with the share of the score it carries as weight.
      *
-     * The weights add up to exactly 100%, and an activity counts for no more than its weight however far above target it went.
+     * The weights are worked out by the KPI service, the outbound calls at their configured share (or all of it when
+     * nothing else has a target) and the rest split equally. An admin can change them on the sheet afterwards.
+     * An activity counts for no more than its weight however far above target it went.
      *
      * @param  array<string, mixed>  $row
      * @param  array<string, string>  $labels
@@ -84,84 +86,22 @@ class EmployeeKpiExport implements WithMultipleSheets
      */
     private function lines(array $row, array $labels): array
     {
-        $weights = array_map('floatval', (array) config('kpi.weights', []));
-
         $order = array_flip(array_keys($labels));
 
-        $activities = collect($row['activities'])->filter(fn (array $activity) => $activity['target'] > 0);
-
-        // the lines are the scored activities, the approximate targets stay off the sheet unless nothing is scored
-        $scored = $activities->filter(fn (array $activity) => ($weights[$activity['metric']] ?? 1.0) > 0);
-        $activities = ($scored->isNotEmpty() ? $scored : $activities)
-            ->map(fn (array $activity, string $key) => $activity + [
+        return collect($row['lines'] ?? [])
+            ->map(fn (array $line, string $key) => [
                 'title' => $labels[$key] ?? $key,
-                'size' => $activity['target'] * ($weights[$activity['metric']] ?? 1.0),
+                'target' => $line['target'],
+                'actual' => $line['actual'],
+                'achievement' => $line['achievement'],
+                'weight' => $line['weight'],
+                'score' => round($line['score'], 2),
+                'order' => $order[$key] ?? PHP_INT_MAX,
             ])
-            ->sortBy(fn (array $activity, string $key) => $order[$key] ?? PHP_INT_MAX)
-            ->values();
-
-        $shares = self::shares($activities->pluck('size')->all());
-
-        return $activities
-            ->map(function (array $activity, int $index) use ($shares) {
-                $achievement = min($activity['actual'] / $activity['target'], 1.0);
-
-                return [
-                    'title' => $activity['title'],
-                    'target' => $activity['target'],
-                    'actual' => $activity['actual'],
-                    'achievement' => $achievement,
-                    'weight' => $shares[$index],
-                    'score' => round($achievement * $shares[$index] * 100, 2),
-                ];
-            })
+            ->sortBy('order')
+            ->map(fn (array $line) => array_diff_key($line, ['order' => true]))
+            ->values()
             ->all();
-    }
-
-    /**
-     * Each size as a fraction of the whole, in whole percents, with the rounding spread so they add up to exactly 1.
-     *
-     * @param  list<float>  $sizes
-     * @return list<float>
-     */
-    private static function shares(array $sizes): array
-    {
-        $total = array_sum($sizes);
-        $count = count($sizes);
-
-        if ($count === 0) {
-            return [];
-        }
-
-        // every size being 0 means every weight was set to 0, so the lines share equally
-        $exact = array_map(fn (float $size) => ($total > 0 ? $size / $total : 1 / $count) * 100, $sizes);
-        // a line too small for a whole percent still gets one, as long as there are percents enough to go round
-        $least = $count <= 100 ? 1 : 0;
-        $units = array_map(fn (float $share) => max($least, (int) floor($share)), $exact);
-
-        // the percents lost to rounding down go to the lines that lost the most
-        $remainders = [];
-        foreach ($exact as $index => $share) {
-            $remainders[$index] = $share - $units[$index];
-        }
-        arsort($remainders);
-
-        foreach (array_slice(array_keys($remainders), 0, max(0, 100 - array_sum($units))) as $index) {
-            $units[$index]++;
-        }
-
-        // and the percents handed to the small lines come off the lines rounded up the furthest
-        for ($over = array_sum($units) - 100; $over > 0; $over--) {
-            $index = null;
-            foreach ($units as $candidate => $unit) {
-                if ($unit > $least && ($index === null || $unit - $exact[$candidate] > $units[$index] - $exact[$index])) {
-                    $index = $candidate;
-                }
-            }
-            $units[$index]--;
-        }
-
-        return array_map(fn (int $unit) => $unit / 100, $units);
     }
 
     /**
@@ -171,7 +111,7 @@ class EmployeeKpiExport implements WithMultipleSheets
      */
     private function activityLabels(): array
     {
-        $keys = collect($this->rows)->flatMap(fn (array $row) => array_keys($row['activities']))->unique();
+        $keys = collect($this->rows)->flatMap(fn (array $row) => array_keys($row['lines'] ?? []))->unique();
         $ids = fn (string $prefix) => $keys->filter(fn (string $key) => str_starts_with($key, $prefix))->map(fn (string $key) => (int) substr($key, strlen($prefix)));
 
         $labels = [];
