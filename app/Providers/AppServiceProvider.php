@@ -11,6 +11,7 @@ use Illuminate\Auth\Events\Logout;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 
@@ -30,6 +31,8 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Status::observe(StatusObserver::class);
+
+        Schema::defaultStringLength(191);
 
         Event::listen(Login::class, function (Login $event): void {
             $this->logAuthActivity(

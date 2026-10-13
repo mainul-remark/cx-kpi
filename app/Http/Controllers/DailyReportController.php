@@ -241,6 +241,26 @@ class DailyReportController extends Controller
     }
 
     /**
+     * The non-zero project and platform counts of one field, for the listing's breakdown under each total.
+     *
+     * @return array<int, array{name: string, count: int, type: string}>
+     */
+    private function breakdown(DailyReport $report, string $field): array
+    {
+        $rows = collect();
+
+        foreach ($report->projectCalls as $call) {
+            $rows->push(['name' => $call->project?->name ?? 'Project', 'count' => (int) $call->{$field}, 'type' => 'project']);
+        }
+
+        foreach ($report->platformReplies as $reply) {
+            $rows->push(['name' => $reply->socialPlatform?->name ?? 'Platform', 'count' => (int) $reply->{$field}, 'type' => 'platform']);
+        }
+
+        return $rows->filter(fn (array $row) => $row['count'] > 0)->values()->all();
+    }
+
+    /**
      * DataTables response for a report listing, with the per-report comment and message totals.
      */
     private function reportTable(Request $request, Builder $reports)
@@ -253,7 +273,7 @@ class DailyReportController extends Controller
 
         $reports
             ->select('daily_reports.*')
-            ->with('user:id,name')
+            ->with(['user:id,name', 'platformReplies.socialPlatform:id,name', 'projectCalls.project:id,name'])
             ->withSum('platformReplies as platform_comments', 'comments')
             ->withSum('projectCalls as project_comments', 'comments')
             ->withSum('platformReplies as platform_messages', 'message_replies')
@@ -265,7 +285,9 @@ class DailyReportController extends Controller
 
         return DataTables::of($reports)
             ->addIndexColumn()
-            ->addColumn('is_own', fn (DailyReport $report) => (int) $report->user_id === $userId)
+            ->addColumn('comments_breakdown', fn (DailyReport $report) => $this->breakdown($report, 'comments'))
+            ->addColumn('messages_breakdown', fn (DailyReport $report) => $this->breakdown($report, 'message_replies'))
+            ->addColumn('is_own',fn (DailyReport $report) => (int) $report->user_id === $userId)
             ->addColumn('can_edit', fn (DailyReport $report) => (int) $report->user_id === $userId || $request->user()->usages_sector === 'corporate')
             ->toJson();
     }

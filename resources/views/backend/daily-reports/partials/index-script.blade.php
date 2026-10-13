@@ -13,6 +13,21 @@
             return data || 0;
         }
 
+        function escapeHtml(value) {
+            return $('<div>').text(value).html();
+        }
+
+        // the total, with each project / platform that contributed to it listed underneath
+        function totalWithBreakdown(total, items) {
+            let html = '<div class="fw-semibold">' + total + '</div>';
+            (items || []).forEach(function (item) {
+                const icon = item.type === 'project' ? 'mdi-briefcase-outline' : 'mdi-share-variant';
+                html += '<div class="small text-muted"><i class="mdi ' + icon + ' me-1"></i>'
+                    + escapeHtml(item.name) + ': ' + item.count + '</div>';
+            });
+            return html;
+        }
+
         const columns = [
             { data: 'DT_RowIndex', name: 'DT_RowIndex', orderable: false, searchable: false, width: '60px' },
             { data: 'report_date', name: 'report_date' },
@@ -22,11 +37,15 @@
             { data: 'inbound_calls', name: 'inbound_calls', searchable: false },
             {
                 data: 'platform_comments', name: 'platform_comments', orderable: false, searchable: false,
-                render: function (data, type, row) { return count(row.platform_comments) + count(row.project_comments); }
+                render: function (data, type, row) {
+                    return totalWithBreakdown(count(row.platform_comments) + count(row.project_comments), row.comments_breakdown);
+                }
             },
             {
                 data: 'platform_messages', name: 'platform_messages', orderable: false, searchable: false,
-                render: function (data, type, row) { return count(row.platform_messages) + count(row.project_messages); }
+                render: function (data, type, row) {
+                    return totalWithBreakdown(count(row.platform_messages) + count(row.project_messages), row.messages_breakdown);
+                }
             },
             {
                 data: 'id', name: 'id', orderable: false, searchable: false, width: '140px',
