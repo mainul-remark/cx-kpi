@@ -297,6 +297,13 @@ class ResourceSeeder extends Seeder
                 'label' => 'Edit Daily Target',
             ],
             [
+                'resource_id' => '003b1b6a1470f87451fc37b471f86398893782ed',
+                'name' => 'DailyTarget GET::Export',
+                'controller' => 'DailyTarget',
+                'action' => 'App\\Http\\Controllers\\DailyTargetController@export',
+                'label' => 'Export Daily Targets',
+            ],
+            [
                 'resource_id' => '4cf803fb1c7b3c1a31b27549006c82c901e51e30',
                 'name' => 'DailyTarget GET::Index',
                 'controller' => 'DailyTarget',

@@ -29,11 +29,18 @@
                         <h5 class="card-title mb-0">
                             <i class="mdi mdi-view-list me-1"></i> Target List
                         </h5>
-                        @allowed('daily-targets.create')
-                            <a href="{{ route('daily-targets.create') }}" class="btn btn-sm btn-outline-primary">
-                                <i class="mdi mdi-plus-circle me-1"></i> Set Target
-                            </a>
-                        @endallowed
+                        <div class="d-flex gap-2">
+                            @allowed('daily-targets.export')
+                                <a href="{{ route('daily-targets.export') }}" class="btn btn-sm btn-outline-success" id="dailyTargetExport" title="Export the targets matching the filters to CSV">
+                                    <i class="mdi mdi-download me-1"></i> Export CSV
+                                </a>
+                            @endallowed
+                            @allowed('daily-targets.create')
+                                <a href="{{ route('daily-targets.create') }}" class="btn btn-sm btn-outline-primary">
+                                    <i class="mdi mdi-plus-circle me-1"></i> Set Target
+                                </a>
+                            @endallowed
+                        </div>
                     </div>
 
                     <div class="card-body">

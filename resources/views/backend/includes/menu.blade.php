@@ -186,11 +186,11 @@
                     </a>
                     <ul class="slide-menu child1">
                         <li class="slide side-menu__label1 ms-1">
-                            <a href="javascript:void(0);">Daily Reports</a>
+                            <a href="javascript:void(0);">Day End</a>
                         </li>
                         @allowed('daily-reports.create')
                             <li class="slide">
-                                <a href="{{ route('daily-reports.create') }}" class="side-menu__item">Daily Report</a>
+                                <a href="{{ route('daily-reports.create') }}" class="side-menu__item">Day End</a>
                             </li>
                         @endallowed
                         @allowed('daily-reports.index')

@@ -3,12 +3,16 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\DailyTargetRequest;
+use App\HelperFiles\HelperFile;
+use App\Jobs\GenerateDailyTargetExport;
 use App\Models\DailyTarget;
 use App\Models\Holiday;
 use App\Models\Project;
 use App\Models\SocialPlatform;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Yajra\DataTables\DataTables;
 
@@ -29,26 +33,100 @@ class DailyTargetController extends Controller
         ]);
 
         $targets = DailyTarget::query()
-            ->select('daily_targets.*')
-            ->with([
-                'user:id,name',
-                'setByUser:id,name',
-                'projectCalls.project:id,name',
-                'platformReplies.socialPlatform:id,name',
-            ])
-            ->withSum('platformReplies as platform_comments', 'comments')
-            ->withSum('projectCalls as project_comments', 'comments')
-            ->withSum('platformReplies as platform_messages', 'message_replies')
-            ->withSum('projectCalls as project_messages', 'message_replies')
-            ->when($request->filled('user_id'), fn ($query) => $query->where('user_id', (int) $request->input('user_id')))
-            ->when($filters['from'] ?? null, fn ($query, $from) => $query->whereDate('target_date', '>=', $from))
-            ->when($filters['to'] ?? null, fn ($query, $to) => $query->whereDate('target_date', '<=', $to))
+            ->listing($filters['from'] ?? null, $filters['to'] ?? null, $request->filled('user_id') ? (int) $request->input('user_id') : null)
             // latest day first until the user sorts by a column
             ->when(!$request->has('order'), fn ($query) => $query->orderByDesc('target_date')->orderBy('user_id'));
 
         return DataTables::of($targets)
             ->addIndexColumn()
             ->toJson();
+    }
+
+    /**
+     * The CSV of the targets on the page, built in the background.
+     *
+     * One action for the three steps, so the permission to export covers all of them:
+     *  - without a token the export is queued and its token returned,
+     *  - with a token its progress is returned,
+     *  - with a token and download=1 the finished file is sent and removed from the disk.
+     */
+    public function export(Request $request)
+    {
+        $token = $request->query('token');
+
+        if (is_string($token) && $token !== '') {
+            return $request->boolean('download') ? $this->exportDownload($request, $token) : $this->exportStatus($request, $token);
+        }
+
+        $filters = $request->validate([
+            'from' => ['nullable', 'date_format:Y-m-d'],
+            'to' => ['nullable', 'date_format:Y-m-d'],
+            'user_id' => ['nullable', 'integer'],
+        ]);
+
+        $token = (string) Str::uuid();
+
+        Cache::put(GenerateDailyTargetExport::cacheKey($token), [
+            'status' => 'pending',
+            'user_id' => $request->user()->id,
+        ], now()->addMinutes(GenerateDailyTargetExport::TTL_MINUTES));
+
+        GenerateDailyTargetExport::dispatch(
+            $token,
+            $request->user()->id,
+            $filters['from'] ?? null,
+            $filters['to'] ?? null,
+            isset($filters['user_id']) ? (int) $filters['user_id'] : null,
+        );
+
+        // there is no worker running all the time on every installation, so make sure one picks the job up
+        if (config('queue.default') !== 'sync') {
+            HelperFile::startQueueWorker();
+        }
+
+        return response()->json(['token' => $token], 202);
+    }
+
+    private function exportStatus(Request $request, string $token)
+    {
+        $export = $this->ownExport($request, $token);
+
+        if ($export['status'] === 'done' && !Storage::disk('local')->exists($export['file'])) {
+            return response()->json(['status' => 'expired']);
+        }
+
+        return response()->json(array_filter([
+            'status' => $export['status'],
+            'message' => $export['message'] ?? null,
+        ]));
+    }
+
+    private function exportDownload(Request $request, string $token)
+    {
+        $export = $this->ownExport($request, $token);
+
+        abort_unless($export['status'] === 'done' && Storage::disk('local')->exists($export['file']), 404);
+
+        // a file is handed over once, and removed from the disk as soon as it has been sent
+        Cache::forget(GenerateDailyTargetExport::cacheKey($token));
+
+        return response()
+            ->download(Storage::disk('local')->path($export['file']), $export['name'], ['Content-Type' => 'text/csv; charset=UTF-8'])
+            ->deleteFileAfterSend(true);
+    }
+
+    /**
+     * The outcome of a queued export of the user, a 404 for one that is unknown, expired or someone else's.
+     *
+     * @return array<string, mixed>
+     */
+    private function ownExport(Request $request, string $token): array
+    {
+        $export = Cache::get(GenerateDailyTargetExport::cacheKey($token));
+
+        abort_unless(is_array($export) && (int) ($export['user_id'] ?? 0) === (int) $request->user()->id, 404);
+
+        return $export;
     }
 
     /**

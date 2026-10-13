@@ -106,6 +106,63 @@
             targetTable.ajax.reload();
         });
 
+        // the export is built in the background: ask for it, wait for it to be ready, then download it
+        const $export = $('#dailyTargetExport');
+        const exportUrl = $export.attr('href');
+        const exportLabel = $export.html();
+        const exportPollMs = 2000;
+        const exportMaxPolls = 300;
+
+        function exportFinished(message) {
+            $export.removeClass('disabled').html(exportLabel);
+            if (message) toastr.error(message);
+        }
+
+        function pollExport(token, attempt) {
+            if (attempt > exportMaxPolls) {
+                exportFinished('The export is taking too long, please try again later.');
+                return;
+            }
+
+            $.ajax({ url: exportUrl, method: 'GET', data: { token: token }, dataType: 'json' })
+                .done(function (response) {
+                    if (response.status === 'done') {
+                        // a file response with an attachment header, so the page stays where it is
+                        window.location.href = exportUrl + '?' + $.param({ token: token, download: 1 });
+                        exportFinished();
+                        toastr.success('Export ready, downloading.');
+                    } else if (response.status === 'failed' || response.status === 'expired') {
+                        exportFinished(response.message || 'The export is no longer available, please try again.');
+                    } else {
+                        setTimeout(function () { pollExport(token, attempt + 1); }, exportPollMs);
+                    }
+                })
+                .fail(function () {
+                    exportFinished('The export could not be checked, please try again.');
+                });
+        }
+
+        $export.on('click', function (e) {
+            e.preventDefault();
+            if ($export.hasClass('disabled')) return;
+
+            $export.addClass('disabled').html('<span class="spinner-border spinner-border-sm me-1"></span> Preparing export...');
+
+            $.ajax({
+                url: exportUrl,
+                method: 'GET',
+                data: { from: $('#filter_from').val(), to: $('#filter_to').val(), user_id: $('#filter_user').val() },
+                dataType: 'json'
+            }).done(function (response) {
+                pollExport(response.token, 1);
+            }).fail(function (xhr) {
+                const errors = xhr.status === 422 && xhr.responseJSON && xhr.responseJSON.errors;
+                exportFinished(errors
+                    ? errors[Object.keys(errors)[0]][0]
+                    : (xhr.status === 403 ? 'You do not have permission to export.' : 'The export could not be started.'));
+            });
+        });
+
         $(document).on('click', '.delete-daily-target', function () {
             const id = $(this).data('id');
 

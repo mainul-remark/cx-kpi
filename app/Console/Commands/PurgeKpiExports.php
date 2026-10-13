@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Jobs\GenerateDailyTargetExport;
 use App\Jobs\GenerateKpiExport;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Storage;
@@ -17,9 +18,11 @@ class PurgeKpiExports extends Command
         $limit = now()->subMinutes(GenerateKpiExport::TTL_MINUTES)->getTimestamp();
         $deleted = 0;
 
-        foreach ($disk->files(GenerateKpiExport::DIRECTORY) as $file) {
-            if ($disk->lastModified($file) <= $limit && $disk->delete($file)) {
-                $deleted++;
+        foreach ([GenerateKpiExport::DIRECTORY, GenerateDailyTargetExport::DIRECTORY] as $directory) {
+            foreach ($disk->files($directory) as $file) {
+                if ($disk->lastModified($file) <= $limit && $disk->delete($file)) {
+                    $deleted++;
+                }
             }
         }
 

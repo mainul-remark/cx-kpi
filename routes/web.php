@@ -62,6 +62,8 @@ Route::middleware([
         'social-platforms'          => SocialPlatformController::class,
         'daily-reports'             => DailyReportController::class,
     ]);
+    // registered before the resource so "export" is not read as a target id
+    Route::get('daily-targets/export', [DailyTargetController::class, 'export'])->name('daily-targets.export');
     Route::resource('daily-targets', DailyTargetController::class)->only(['index', 'create', 'store', 'edit', 'destroy']);
     Route::resource('period-targets', PeriodTargetController::class)->only(['index', 'store', 'destroy']);
     Route::post('holidays/import', [HolidayController::class, 'import'])->name('holidays.import');

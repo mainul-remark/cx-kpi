@@ -232,6 +232,28 @@ class DailyTargetTest extends TestCase
         $this->assertDatabaseCount('daily_target_platform_replies', 0);
     }
 
+    public function test_targets_are_exported_to_csv_through_the_queue(): void
+    {
+        [$platform, $project] = $this->platformAndProject();
+        $users = $this->fieldUsers(2);
+
+        $this->postJson('/daily-targets', $this->payload($users, '2026-10-06', '2026-10-06', $platform, $project))->assertCreated();
+
+        $token = $this->getJson('/daily-targets/export?user_id='.$users[0]->id)->assertStatus(202)->json('token');
+
+        $this->getJson('/daily-targets/export?token='.$token)->assertOk()->assertJson(['status' => 'done']);
+
+        $csv = $this->get('/daily-targets/export?token='.$token.'&download=1')->assertOk()->streamedContent();
+        $lines = array_values(array_filter(explode("\n", $csv)));
+
+        $this->assertCount(2, $lines, 'header plus the one user filtered on');
+        $this->assertStringContainsString($users[0]->name, $lines[1]);
+        $this->assertStringContainsString('2026-10-06', $lines[1]);
+
+        // a file is handed over once
+        $this->get('/daily-targets/export?token='.$token.'&download=1')->assertNotFound();
+    }
+
     /**
      * @return array{0: SocialPlatform, 1: Project}
      */

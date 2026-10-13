@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -24,6 +25,28 @@ class DailyTarget extends Model
             'outbound_calls' => 'integer',
             'inbound_calls'  => 'integer',
         ];
+    }
+
+    /**
+     * The targets with their breakdowns and the summed comments and replies, narrowed by the optional filters.
+     */
+    public function scopeListing(Builder $query, ?string $from = null, ?string $to = null, ?int $userId = null): void
+    {
+        $query
+            ->select('daily_targets.*')
+            ->with([
+                'user:id,name',
+                'setByUser:id,name',
+                'projectCalls.project:id,name',
+                'platformReplies.socialPlatform:id,name',
+            ])
+            ->withSum('platformReplies as platform_comments', 'comments')
+            ->withSum('projectCalls as project_comments', 'comments')
+            ->withSum('platformReplies as platform_messages', 'message_replies')
+            ->withSum('projectCalls as project_messages', 'message_replies')
+            ->when($userId, fn ($q) => $q->where('user_id', $userId))
+            ->when($from, fn ($q) => $q->whereDate('target_date', '>=', $from))
+            ->when($to, fn ($q) => $q->whereDate('target_date', '<=', $to));
     }
 
     public function user(): BelongsTo
