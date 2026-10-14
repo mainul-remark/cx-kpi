@@ -77,6 +77,7 @@
                                     <th>Outbound Calls</th>
                                     <th>Order Processing</th>
                                     <th>Inbound Calls</th>
+                                    <th>Solved Issues</th>
                                     <th>Comments</th>
                                     <th>Message Replies</th>
                                     <th>Action</th>

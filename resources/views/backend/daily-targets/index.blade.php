@@ -77,6 +77,7 @@
                                     <th>User</th>
                                     <th>Outbound Calls</th>
                                     <th>Inbound Calls (approx.)</th>
+                                    <th>Solved Issues (approx.)</th>
                                     <th>Comments (approx.)</th>
                                     <th>Message Replies (approx.)</th>
                                     <th>By Project (approx.)</th>

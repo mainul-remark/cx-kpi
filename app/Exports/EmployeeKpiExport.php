@@ -119,6 +119,8 @@ class EmployeeKpiExport implements WithMultipleSheets
             $labels[$metric] = ReportDashboardService::METRICS[$metric];
         }
 
+        $labels['solved_issues'] = 'Solved Issues';
+
         $counts = ['inbound_calls' => 'Inbound Calls', 'comments' => 'Comments', 'message_replies' => 'Message Replies'];
 
         $platforms = SocialPlatform::query()->whereIn('id', $ids('platform:'))->orderBy('name')->get(['id', 'name']);

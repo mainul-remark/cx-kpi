@@ -4,6 +4,7 @@
     $totals = [
         'outbound_calls' => ['label' => 'Outbound Calls', 'required' => true],
         'inbound_calls' => ['label' => 'Inbound Calls (approximate)', 'required' => false],
+        'solved_issues' => ['label' => 'Solved Issues', 'required' => false],
     ];
     $callColumns = ['inbound_calls' => 'Outbound Calls'];
     $messageColumns = ['comments' => 'Comments', 'message_replies' => 'Message Replies'];
@@ -107,8 +108,8 @@
                         <div class="card-body">
                             <p class="text-muted">
                                 The outbound call target is required, the KPI is worked out from it: the outbound and order processing calls
-                                reported are added up and compared with it. Every other target is approximate and optional, it is shown for
-                                reference and does not change the KPI. Leave it empty to set none.
+                                reported are added up and compared with it. Every other target is approximate and optional: leave it empty to set none.
+                                A solved issues target, when set, takes its share of the KPI score like the comments and message replies targets.
                             </p>
 
                             <ul class="nav nav-pills justify-content-center mb-4" id="targetTabs" role="tablist">

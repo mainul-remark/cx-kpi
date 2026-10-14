@@ -48,6 +48,7 @@
             { data: 'user.name', name: 'user.name', orderable: false, defaultContent: '' },
             { data: 'outbound_calls', name: 'outbound_calls', searchable: false, render: count },
             { data: 'inbound_calls', name: 'inbound_calls', searchable: false, render: count },
+            { data: 'solved_issues', name: 'solved_issues', searchable: false, render: count },
             {
                 data: 'platform_comments', name: 'platform_comments', orderable: false, searchable: false,
                 render: function (data, type, row) { return sum(row.platform_comments, row.project_comments); }

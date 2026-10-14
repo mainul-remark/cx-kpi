@@ -168,6 +168,10 @@
                 return tile(kpi.label, number(kpi.actual), lines);
             });
 
+            if (overview.solved_issues) {
+                tiles.push(tile(overview.solved_issues.label, number(overview.solved_issues.actual), [changeLine(overview.solved_issues)]));
+            }
+
             const reports = overview.submissions;
             tiles.push(tile('Reports Submitted', number(reports.submitted), reports.pct === null
                 ? ['<span class="text-muted">No working day in this period yet</span>']
@@ -455,7 +459,7 @@
             const meta = data.people.meta;
 
             if (!rows.length) {
-                $body.html('<tr><td colspan="11" class="text-center text-muted">' + (table.search ? 'No user matches the search.' : 'No field user found.') + '</td></tr>');
+                $body.html('<tr><td colspan="12" class="text-center text-muted">' + (table.search ? 'No user matches the search.' : 'No field user found.') + '</td></tr>');
                 $('#dashboardUserPager').addClass('d-none');
                 return;
             }
@@ -471,6 +475,7 @@
                     (user.employee_id ? ' <small class="text-muted">' + escapeHtml(user.employee_id) + '</small>' : '') + '</td>' +
                     '<td class="text-end">' + number(user.reports) + '</td>' +
                     cells +
+                    '<td class="text-end">' + number(user.solved_issues) + '</td>' +
                     '<td class="text-end fw-semibold">' + number(user.total) + '</td>' +
                     '<td class="text-end">' + (user.target_total === null ? '&mdash;' : number(user.target_total)) + '</td>' +
                     '<td>' + (user.achievement_pct === null
@@ -514,12 +519,12 @@
                 data: $.extend({ section: 'people', export: 1, sort: table.sort, dir: table.dir, search: table.search }, params())
             }).done(function (response) {
                 const keys = Object.keys(metrics);
-                const rows = [['Sl', 'User', 'Employee ID', 'Reports'].concat(keys.map(function (key) { return metrics[key]; }), ['Total', 'Target', 'Achievement %', 'KPI Score'])];
+                const rows = [['Sl', 'User', 'Employee ID', 'Reports'].concat(keys.map(function (key) { return metrics[key]; }), ['Solved Issues', 'Total', 'Target', 'Achievement %', 'KPI Score'])];
 
                 response.rows.forEach(function (user, index) {
                     rows.push([index + 1, user.name, user.employee_id, user.reports].concat(
                         keys.map(function (key) { return user[key]; }),
-                        [user.total, user.target_total, user.achievement_pct, user.score]
+                        [user.solved_issues, user.total, user.target_total, user.achievement_pct, user.score]
                     ));
                 });
                 downloadCsv('field-user-performance', rows, response.range);

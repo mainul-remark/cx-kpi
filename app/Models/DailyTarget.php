@@ -15,6 +15,7 @@ class DailyTarget extends Model
         'target_date',
         'outbound_calls',
         'inbound_calls',
+        'solved_issues',
         'set_by',
     ];
 
@@ -24,6 +25,7 @@ class DailyTarget extends Model
             'target_date'    => 'date:Y-m-d',
             'outbound_calls' => 'integer',
             'inbound_calls'  => 'integer',
+            'solved_issues'  => 'integer',
         ];
     }
 
@@ -91,6 +93,7 @@ class DailyTarget extends Model
                         'target_date'    => $date,
                         'outbound_calls' => $data['outbound_calls'] ?? null,
                         'inbound_calls'  => $data['inbound_calls'] ?? null,
+                        'solved_issues'  => $data['solved_issues'] ?? null,
                         'set_by'         => $setBy,
                         'created_at'     => $now,
                         'updated_at'     => $now,
@@ -102,7 +105,7 @@ class DailyTarget extends Model
                 self::query()->upsert(
                     $chunk,
                     ['user_id', 'target_date'],
-                    ['outbound_calls', 'inbound_calls', 'set_by', 'updated_at']
+                    ['outbound_calls', 'inbound_calls', 'solved_issues', 'set_by', 'updated_at']
                 );
             }
 

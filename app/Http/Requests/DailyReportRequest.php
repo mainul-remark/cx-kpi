@@ -59,6 +59,8 @@ class DailyReportRequest extends FormRequest
             'inbound_calls_note'    => $note,
             'order_processing'      => $count,
             'order_processing_note' => $note,
+            'solved_issues'         => $optionalCount,
+            'solved_issues_note'    => $note,
 
             'platforms'                      => ['nullable', 'array'],
             'platforms.*.social_platform_id' => ['required', 'integer', 'distinct', Rule::in($platformIds)],

@@ -18,6 +18,8 @@ class DailyReport extends Model
         'inbound_calls_note',
         'order_processing',
         'order_processing_note',
+        'solved_issues',
+        'solved_issues_note',
     ];
 
     protected function casts(): array
@@ -79,6 +81,8 @@ class DailyReport extends Model
                 'inbound_calls_note'    => $data['inbound_calls_note'] ?? null,
                 'order_processing'      => $data['order_processing'] ?? 0,
                 'order_processing_note' => $data['order_processing_note'] ?? null,
+                'solved_issues'         => $data['solved_issues'] ?? 0,
+                'solved_issues_note'    => $data['solved_issues_note'] ?? null,
             ]);
             $report->save();
 

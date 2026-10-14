@@ -35,6 +35,7 @@
             { data: 'outbound_calls', name: 'outbound_calls', searchable: false },
             { data: 'order_processing', name: 'order_processing', searchable: false },
             { data: 'inbound_calls', name: 'inbound_calls', searchable: false },
+            { data: 'solved_issues', name: 'solved_issues', searchable: false },
             {
                 data: 'platform_comments', name: 'platform_comments', orderable: false, searchable: false,
                 render: function (data, type, row) {

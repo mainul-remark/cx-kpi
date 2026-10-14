@@ -115,6 +115,10 @@ class ReportDashboardService
             ];
         }
 
+        // not one of the METRICS: it has no target and is not part of any total
+        $solved = (int) ($actual['solved_issues'] ?? 0);
+        $solvedBefore = (int) ($previous['solved_issues'] ?? 0);
+
         return [
             'range' => [
                 'from' => $from,
@@ -125,6 +129,13 @@ class ReportDashboardService
             ],
             'show_targets' => $withTargets,
             'kpis' => $kpis,
+            'solved_issues' => [
+                'key' => 'solved_issues',
+                'label' => 'Solved Issues',
+                'actual' => $solved,
+                'previous' => $solvedBefore,
+                'change_pct' => $solvedBefore > 0 ? round(($solved - $solvedBefore) / $solvedBefore * 100, 1) : null,
+            ],
             'submissions' => $this->submissions($from, $to, $userId, (int) ($actual['entries'] ?? 0)),
             'trend' => $this->trend($from, $to, $userId),
             'platforms' => $this->breakdown('platforms', 'social_platforms', 'social_platform_id', $from, $to, $userId, $withTargets),
@@ -341,8 +352,11 @@ class ReportDashboardService
         // order processing is reported next to the outbound calls and counts with them, a target has none
         $outbound = $source === 'report' ? 'SUM(outbound_calls + order_processing)' : 'SUM(outbound_calls)';
 
+        // solved issues are only reported, a target has no such column
+        $solved = $source === 'report' ? 'SUM(solved_issues)' : 'NULL';
+
         $main = $this->scoped($source, $from, $to, $userId)
-            ->selectRaw($outbound.' as outbound_calls, SUM(inbound_calls) as inbound_calls, COUNT(*) as entries')
+            ->selectRaw($outbound.' as outbound_calls, SUM(inbound_calls) as inbound_calls, '.$solved.' as solved_issues, COUNT(*) as entries')
             ->when($group, fn (Builder $query) => $query->addSelect($group.' as group_key')->groupBy($group))
             ->get();
 
@@ -350,6 +364,7 @@ class ReportDashboardService
             $rows->put($groupKey($row), [
                 'outbound_calls' => $row->outbound_calls,
                 'inbound_calls' => $row->inbound_calls,
+                'solved_issues' => $row->solved_issues,
                 'comments' => null,
                 'message_replies' => null,
                 'entries' => (int) $row->entries,
@@ -470,7 +485,7 @@ class ReportDashboardService
     /**
      * What the people section sorts by, as the key of a row.
      */
-    public const PEOPLE_SORTS = ['name', 'reports', 'outbound_calls', 'inbound_calls', 'comments', 'message_replies', 'total', 'achievement_pct', 'score'];
+    public const PEOPLE_SORTS = ['name', 'reports', 'outbound_calls', 'inbound_calls', 'comments', 'message_replies', 'solved_issues', 'total', 'achievement_pct', 'score'];
 
     /**
      * One page of the field users with their figures and KPI score, and what stands out in the whole team.
@@ -573,6 +588,8 @@ class ReportDashboardService
                     }
 
                     $row['total'] = array_sum(array_intersect_key($row, self::METRICS));
+                    // after the total on purpose: solved issues are not part of it
+                    $row['solved_issues'] = (int) ($done['solved_issues'] ?? 0);
                     $row['target_total'] = $withTargets && ($kpi['target_total'] ?? 0) > 0 ? $kpi['target_total'] : null;
                     $row['achievement_pct'] = $withTargets ? ($kpi['pct'] ?? null) : null;
                     $row['score'] = $kpi['score'] ?? null;

@@ -109,6 +109,17 @@
                                                     </td>
                                                 </tr>
                                             @endforeach
+                                            <tr>
+                                                <td><label class="mb-0" for="solved_issues">Solved Issues</label></td>
+                                                <td>
+                                                    <input type="number" name="solved_issues" id="solved_issues" class="form-control" min="0" step="1" value="{{ $report?->solved_issues ?? 0 }}">
+                                                    <div class="invalid-feedback" data-error-for="solved_issues"></div>
+                                                </td>
+                                                <td>
+                                                    <input type="text" name="solved_issues_note" class="form-control" maxlength="5000" placeholder="Optional note" value="{{ $report?->solved_issues_note }}" aria-label="Solved Issues note">
+                                                    <div class="invalid-feedback" data-error-for="solved_issues_note"></div>
+                                                </td>
+                                            </tr>
                                             </tbody>
                                         </table>
                                     </div>

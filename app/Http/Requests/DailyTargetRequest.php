@@ -57,6 +57,7 @@ class DailyTargetRequest extends FormRequest
             'outbound_calls' => ['required', 'integer', 'min:1', 'max:4294967295'],
             // approximate targets, optional as nobody knows how many customers will call, comment or message
             'inbound_calls'  => $count,
+            'solved_issues'  => $count,
 
             'platforms'                      => ['nullable', 'array'],
             'platforms.*.social_platform_id' => ['required', 'integer', 'distinct', Rule::in(SocialPlatform::query()->where('active', true)->pluck('id')->all())],
@@ -86,6 +87,7 @@ class DailyTargetRequest extends FormRequest
             'to'                             => 'to date',
             'platforms.*.social_platform_id' => 'social platform',
             'outbound_calls'                 => 'outbound call target',
+            'solved_issues'                  => 'solved issues target',
             'platforms.*.inbound_calls'      => 'outbound calls',
             'platforms.*.comments'           => 'comments',
             'platforms.*.message_replies'    => 'message replies',

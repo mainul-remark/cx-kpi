@@ -57,6 +57,7 @@ return [
         'inbound_calls'       => 0,
         'comments'            => 0,
         'message_replies'     => 0,
+        'solved_issues'       => 0,
         'entity_inbound_calls' => 0,
     ],
 

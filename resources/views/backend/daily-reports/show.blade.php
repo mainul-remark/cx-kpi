@@ -66,6 +66,11 @@
                                     <td>{{ $report->inbound_calls }}</td>
                                     <td class="text-wrap">{{ $report->inbound_calls_note }}</td>
                                 </tr>
+                                <tr>
+                                    <td>Solved Issues</td>
+                                    <td>{{ $report->solved_issues }}</td>
+                                    <td class="text-wrap">{{ $report->solved_issues_note }}</td>
+                                </tr>
                                 </tbody>
                             </table>
                         </div>

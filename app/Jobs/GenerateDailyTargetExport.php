@@ -62,7 +62,7 @@ class GenerateDailyTargetExport implements ShouldQueue
             // the byte order mark makes Excel read the file as UTF-8
             fwrite($handle, "\xEF\xBB\xBF");
             fputcsv($handle, [
-                'Date', 'User', 'Outbound Calls', 'Inbound Calls (approx.)', 'Comments (approx.)',
+                'Date', 'User', 'Outbound Calls', 'Inbound Calls (approx.)', 'Solved Issues (approx.)', 'Comments (approx.)',
                 'Message Replies (approx.)', 'By Project (approx.)', 'By Social Platform (approx.)', 'Set By',
             ]);
 
@@ -78,6 +78,7 @@ class GenerateDailyTargetExport implements ShouldQueue
                             $target->user?->name,
                             $target->outbound_calls,
                             $target->inbound_calls,
+                            $target->solved_issues,
                             $this->total($target->platform_comments, $target->project_comments),
                             $this->total($target->platform_messages, $target->project_messages),
                             $this->breakdown($target->projectCalls, 'project'),

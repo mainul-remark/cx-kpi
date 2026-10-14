@@ -224,6 +224,7 @@
                                         <th class="db-sort text-end" data-sort="inbound_calls">Inbound Calls <i class="mdi mdi-unfold-more-horizontal"></i></th>
                                         <th class="db-sort text-end" data-sort="message_replies">Message Replies <i class="mdi mdi-unfold-more-horizontal"></i></th>
                                         <th class="db-sort text-end" data-sort="comments">Comment Replies <i class="mdi mdi-unfold-more-horizontal"></i></th>
+                                        <th class="db-sort text-end" data-sort="solved_issues">Solved Issues <i class="mdi mdi-unfold-more-horizontal"></i></th>
                                         <th class="db-sort text-end" data-sort="total">Total <i class="mdi mdi-unfold-more-horizontal"></i></th>
                                         <th class="text-end">Target</th>
                                         <th class="db-sort" data-sort="achievement_pct">Achievement <i class="mdi mdi-unfold-more-horizontal"></i></th>

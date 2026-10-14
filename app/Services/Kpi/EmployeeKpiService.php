@@ -35,6 +35,11 @@ class EmployeeKpiService
     public const MAX_SCORE = 100;
 
     /**
+     * The activities the breakdown of a user lists: the dashboard metrics and the solved issues.
+     */
+    public const BREAKDOWN_LABELS = ReportDashboardService::METRICS + ['solved_issues' => 'Solved Issues'];
+
+    /**
      * The sheet of the field users for a range, or of one user, with the best score first.
      *
      * @return list<array<string, mixed>>
@@ -126,7 +131,7 @@ class EmployeeKpiService
 
         return $users->mapWithKeys(function (User $user) use ($dates, $working, $targets, $monthly, $monthDays, $periodMode, $reports, $leaves, $weights, $outboundShare, $withDays, $punctuality) {
             $joined = $user->created_at?->toDateString();
-            $breakdown = array_fill_keys(array_keys(ReportDashboardService::METRICS), ['target' => null, 'actual' => 0]);
+            $breakdown = array_fill_keys(array_keys(self::BREAKDOWN_LABELS), ['target' => null, 'actual' => 0]);
             // the same figures per activity, where each platform and each project stands on its own
             $activities = [];
             // period mode only: the days of each month the user was asked for, and what was reported on them
@@ -294,7 +299,7 @@ class EmployeeKpiService
                 'breakdown' => collect($breakdown)
                     ->map(fn (array $figures, string $metric) => [
                         'key' => $metric,
-                        'label' => ReportDashboardService::METRICS[$metric],
+                        'label' => self::BREAKDOWN_LABELS[$metric],
                         'target' => $figures['target'],
                         'actual' => $figures['actual'],
                         'pct' => $figures['target'] === null ? null : self::pct($figures['actual'], $figures['target']),
@@ -456,7 +461,7 @@ class EmployeeKpiService
 
         $main = $scoped()
             ->orderBy('id')
-            ->selectRaw('user_id, '.$config['date'].' as day, ('.$outbound.') as outbound_calls, inbound_calls')
+            ->selectRaw('user_id, '.$config['date'].' as day, ('.$outbound.') as outbound_calls, inbound_calls, solved_issues')
             ->get();
 
         foreach ($main as $row) {
@@ -464,7 +469,7 @@ class EmployeeKpiService
             // a report is kept even when empty, as it still shows the user worked that day
             $figures[$row->user_id][$date] ??= [];
 
-            foreach (['outbound_calls', 'inbound_calls'] as $activity) {
+            foreach (['outbound_calls', 'inbound_calls', 'solved_issues'] as $activity) {
                 if ($row->{$activity} !== null) {
                     $figures[$row->user_id][$date][$activity] = (int) $row->{$activity};
                 }
