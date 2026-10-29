@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CX Team KPI — Pages, Workflows and Business Rules</title>
+  <style>
+    :root{--ink:#172033;--muted:#60708a;--line:#dce3ec;--panel:#f6f8fb;--brand:#3b5ccc;--brand2:#162e74;--good:#147d64;--warn:#9a6700;--bad:#b42318;--code:#eef2f8}
+    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;color:var(--ink);font:15px/1.62 Inter,Segoe UI,Arial,sans-serif;background:#fff}
+    header{background:linear-gradient(135deg,var(--brand2),var(--brand));color:#fff;padding:52px max(24px,calc((100vw - 1180px)/2)) 44px}header h1{margin:0 0 8px;font-size:clamp(30px,5vw,48px);line-height:1.1}header p{max-width:850px;margin:8px 0;opacity:.92}.meta{font-size:13px;opacity:.78}
+    .layout{display:grid;grid-template-columns:280px minmax(0,900px);gap:42px;max-width:1240px;margin:0 auto;padding:32px 24px 80px}.toc{position:sticky;top:18px;align-self:start;max-height:calc(100vh - 36px);overflow:auto;border:1px solid var(--line);border-radius:12px;padding:18px;background:#fff}.toc strong{display:block;margin-bottom:8px}.toc a{display:block;color:#34425a;text-decoration:none;padding:4px 8px;border-radius:6px;font-size:13px}.toc a:hover{background:var(--panel);color:var(--brand)}main{min-width:0}
+    h2{font-size:28px;margin:44px 0 14px;padding-top:8px;border-bottom:2px solid var(--line);padding-bottom:8px}h3{font-size:21px;margin:30px 0 10px}h4{font-size:16px;margin:22px 0 7px;color:var(--brand2)}p{margin:8px 0 13px}ul,ol{padding-left:23px}li{margin:4px 0}a{color:var(--brand)}
+    .lead{font-size:17px}.callout{border-left:4px solid var(--brand);background:var(--panel);padding:13px 16px;margin:16px 0;border-radius:0 8px 8px 0}.callout.warn{border-color:#e0a100;background:#fff8e7}.callout.bad{border-color:var(--bad);background:#fff4f2}.callout.good{border-color:var(--good);background:#effaf6}.tag{display:inline-block;border-radius:999px;padding:2px 8px;font-size:12px;font-weight:700;background:#e8edff;color:#2947a4;margin:1px 3px 1px 0}.tag.field{background:#e9f8f2;color:#11634f}.tag.corp{background:#fff3d6;color:#785100}.tag.acl{background:#f3eafa;color:#69408b}
+    table{width:100%;border-collapse:collapse;margin:14px 0 24px;font-size:14px}th,td{text-align:left;vertical-align:top;border:1px solid var(--line);padding:9px 10px}th{background:#edf2f8;color:#25324a}tr:nth-child(even) td{background:#fbfcfe}code{background:var(--code);padding:1px 5px;border-radius:4px;font:13px/1.5 Consolas,monospace;overflow-wrap:anywhere}.flow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:16px 0}.step{border:1px solid var(--line);border-radius:8px;background:#fff;padding:9px 12px;font-weight:600}.arrow{color:var(--muted);font-weight:700}.path{font-family:Consolas,monospace;color:#4f5f78;font-size:13px}.small{font-size:13px;color:var(--muted)}
+    @media(max-width:900px){.layout{grid-template-columns:1fr}.toc{position:relative;top:0;max-height:none}.flow{display:block}.step{margin:5px 0}.arrow{display:block;text-align:center;transform:rotate(90deg)}}
+    @media print{header{padding:28px;color:#000;background:#fff;border-bottom:2px solid #000}.layout{display:block;max-width:none;padding:12px}.toc{display:none}h2,h3{break-after:avoid}table,.callout{break-inside:avoid}a{color:#000;text-decoration:none}}
+  </style>
+</head>
+<body>
+<header>
+  <h1>CX Team KPI</h1>
+  <p class="lead">Project pages, workflows, business logic, validations, access rules and data lifecycle.</p>
+  <p class="meta">Code-reviewed documentation • Laravel 12 / PHP 8.2+ • Prepared 29 October 2026 • Scope: application code, routes, requests, models, services, views, migrations, jobs and tests in this repository.</p>
+</header>
+<div class="layout">
+  <nav class="toc" aria-label="Table of contents">
+    <strong>Contents</strong>
+    <a href="#overview">1. System overview</a>
+    <a href="#roles">2. Roles and access</a>
+    <a href="#global">3. Global rules</a>
+    <a href="#journeys">4. Main workflows</a>
+    <a href="#pages">5. Page guide</a>
+    <a href="#dashboard">5.1 Dashboard</a>
+    <a href="#attendance">5.2 Attendance</a>
+    <a href="#reports">5.3 Daily reports</a>
+    <a href="#targets">5.4 Targets</a>
+    <a href="#kpi">5.5 KPI</a>
+    <a href="#leave">5.6 Leave</a>
+    <a href="#masters">5.7 Master data</a>
+    <a href="#admin">5.8 Administration</a>
+    <a href="#account">5.9 Account and teams</a>
+    <a href="#data">6. Data model</a>
+    <a href="#automation">7. Automation</a>
+    <a href="#routes">8. Route reference</a>
+    <a href="#observations">9. Implementation notes</a>
+  </nav>
+  <main>
+    <section id="overview">
+      <h2>1. System overview</h2>
+      <p>CX Team KPI is an internal operations application for recording daily customer-experience work, attendance, leave, targets and KPI performance. It uses Laravel authentication, Jetstream teams, Sanctum sessions, an ACL package for route permissions, server-side DataTables, queued Excel/CSV exports, and activity logging.</p>
+      <table>
+        <tr><th>Area</th><th>Purpose</th><th>Primary records</th></tr>
+        <tr><td>Attendance</td><td>Field-user check-in/out, location capture, forgotten checkout handling and manager adjustments.</td><td><code>attendance_sessions</code></td></tr>
+        <tr><td>Daily work</td><td>Counts and notes for calls, order processing, solved issues, projects and platforms.</td><td><code>daily_reports</code> plus child rows</td></tr>
+        <tr><td>Targets</td><td>Daily or monthly targets per user and activity.</td><td><code>daily_targets</code>, <code>period_targets</code></td></tr>
+        <tr><td>KPI</td><td>Compares reports with targets, calculates score, attendance context and frozen monthly results.</td><td>Calculated live; <code>kpi_snapshots</code> for closed months</td></tr>
+        <tr><td>Work calendar</td><td>Friday weekly off, holidays, full/half leave, working-day ranges.</td><td><code>holidays</code>, <code>user_leaves</code></td></tr>
+        <tr><td>Administration</td><td>Users, roles, permissions, site/theme settings and audit activity.</td><td><code>users</code>, ACL tables, <code>site_settings</code>, <code>activity_log</code></td></tr>
+      </table>
+      <div class="callout"><strong>Technology:</strong> Laravel 12, PHP 8.2/8.3, Blade, Livewire/Jetstream, Sanctum, MySQL-style migrations, Yajra DataTables, Laravel Excel, Spatie Activity Log, Uzzal ACL and Vite/Tailwind dependencies.</div>
+    </section>
+
+    <section id="roles">
+      <h2>2. Roles, sectors and access control</h2>
+      <p>Access is decided by two separate concepts. <strong>Sector</strong> controls data scope and business behavior; <strong>ACL role permissions</strong> control which routes/actions a user may open.</p>
+      <table>
+        <tr><th>Actor</th><th>Data scope and behavior</th><th>Typical pages</th></tr>
+        <tr><td><span class="tag field">Field sector</span></td><td>Can check in/out. Dashboard, attendance and KPI are forcibly scoped to the signed-in user. May submit reports and request leave. KPI targets are removed from responses.</td><td>Dashboard, Day End, Report History, My Leaves, Attendance, KPI</td></tr>
+        <tr><td><span class="tag corp">Corporate sector</span></td><td>Can view team-wide reports/metrics, select users, see targets and live team status, edit another user's report, adjust attendance, and export KPI. Does not use the field check-in endpoints.</td><td>Team Reports, Attendance management, KPI/export, targets, leave administration</td></tr>
+        <tr><td><span class="tag acl">ACL roles</span></td><td>Roles hold resource/action permissions generated from routes. Menu links appear only when the matching permission is granted. A sector alone does not grant a page.</td><td>Roles, Users, permission list and any protected business route</td></tr>
+        <tr><td><span class="tag">Super admin</span></td><td>Additional hard-coded authority is required to delete users and roles. A super admin cannot delete their own user account from the admin Users page.</td><td>User/role deletion</td></tr>
+      </table>
+      <p>Most application routes use this middleware chain: authenticated Sanctum session → Jetstream session authentication → verified check → required-report check → ACL resource registration → ACL authorization. The header attendance endpoints deliberately omit ACL so any authenticated field user can use them.</p>
+    </section>
+
+    <section id="global">
+      <h2>3. Global rules and conditions</h2>
+      <h3>Authentication and session rules</h3>
+      <ul>
+        <li><code>/</code> redirects authenticated visitors to <code>/dashboard</code> and guests to <code>/login</code>.</li>
+        <li>Login uses email, lowercases the username and is limited to five attempts per minute per email/IP. Two-factor challenges are also limited to five per minute.</li>
+        <li>Registration, password reset, profile update, password update and confirmed two-factor authentication are enabled by Fortify. Email-verification functionality is disabled in Fortify configuration, although protected routes include the standard <code>verified</code> middleware.</li>
+        <li>Jetstream team management, invitations and account deletion are enabled. API token UI and Jetstream profile photos are disabled in configuration.</li>
+      </ul>
+      <h3>Required prior report gate</h3>
+      <div class="callout warn"><strong>Blocking condition:</strong> if a field user checked in on a previous day and has no report for their latest prior attendance date, every normal protected GET page redirects to the Day End form. AJAX/JSON requests and the report create/store/edit/update routes are exempt. The same debt also prevents a new check-in.</div>
+      <ul>
+        <li>Only the latest prior attendance day is checked; older unreported days are not independently demanded.</li>
+        <li>The system—not the user—chooses a report date: owed previous attendance date, otherwise today.</li>
+        <li>Submitting that report clears the gate. If its old session was forgotten, the service fills 11:59 PM but keeps the session marked incomplete.</li>
+      </ul>
+      <h3>Calendar rules</h3>
+      <ul>
+        <li>Friday is the weekly off day. The working week begins Saturday.</li>
+        <li>Working-day range operations skip Fridays and all configured holidays.</li>
+        <li>Adding/updating a holiday deletes daily targets already set for that date.</li>
+        <li>A full approved leave day prevents a daily report. A half-day leave is still a worked/reportable day and halves applicable daily KPI targets.</li>
+        <li>A full-day leave cannot be created or approved where a report already exists; use half-day leave or delete the report first.</li>
+      </ul>
+      <h3>Common limits</h3>
+      <table>
+        <tr><th>Rule</th><th>Limit</th></tr>
+        <tr><td>Dashboard, attendance and KPI range</td><td>Maximum 366 calendar-day span (the code rejects a difference of 366 days or more).</td></tr>
+        <tr><td>Daily-target/admin-leave range</td><td>Maximum 366-day span.</td></tr>
+        <tr><td>Employee leave-request range</td><td>Maximum 31-day span.</td></tr>
+        <tr><td>Activity count</td><td>Integer from 0 to 4,294,967,295; daily/period outbound target must be at least 1.</td></tr>
+        <tr><td>Activity/leave notes</td><td>Up to 5,000 characters; attendance adjustment note up to 500.</td></tr>
+      </table>
+    </section>
+
+    <section id="journeys">
+      <h2>4. Main end-to-end workflows</h2>
+      <h3>Field employee day</h3>
+      <div class="flow"><span class="step">Log in</span><span class="arrow">→</span><span class="step">Prior report check</span><span class="arrow">→</span><span class="step">Check in</span><span class="arrow">→</span><span class="step">Perform work</span><span class="arrow">→</span><span class="step">Check out</span><span class="arrow">→</span><span class="step">Submit Day End</span></div>
+      <ol>
+        <li>If a prior check-in lacks a report, the employee must submit that report before checking in or navigating the system.</li>
+        <li>Check-in optionally records browser geolocation, accuracy, IP and user agent. Double clicks cannot create duplicate open sessions; an existing open session is returned.</li>
+        <li>The header state shows check-in status, checkout reminder and any forgotten-session warning.</li>
+        <li>Check-out closes the current session. If none is open, it returns a harmless “not checked in” response.</li>
+        <li>Day End saves one report per user/date. Existing data for that date is updated. Active project/platform fields depend on their activity switches.</li>
+      </ol>
+      <h3>Management cycle</h3>
+      <div class="flow"><span class="step">Configure projects/platforms</span><span class="arrow">→</span><span class="step">Maintain holidays</span><span class="arrow">→</span><span class="step">Set targets</span><span class="arrow">→</span><span class="step">Review reports/attendance</span><span class="arrow">→</span><span class="step">Review/export KPI</span></div>
+      <p>Managers first define active work channels and which activity fields each channel supports. They maintain the work calendar, set daily or monthly targets, decide employee leave requests, correct attendance when necessary, and then monitor dashboards/KPI. Closed-month KPI is frozen on the first day of the following month.</p>
+      <h3>Leave request workflow</h3>
+      <div class="flow"><span class="step">Field user requests</span><span class="arrow">→</span><span class="step">Pending</span><span class="arrow">→</span><span class="step">Manager approves or rejects</span><span class="arrow">→</span><span class="step">Approved leave affects attendance/KPI</span></div>
+      <p>A user-created request is pending and does not affect calculations until approved. An admin-created leave is approved immediately. Pending requests can be withdrawn by their owner; decided requests cannot. Approval rechecks report conflicts because a report may have been submitted after the request.</p>
+    </section>
+
+    <section id="pages">
+      <h2>5. Page-by-page guide</h2>
+
+      <article id="dashboard">
+        <h3>5.1 Dashboard — <code>/dashboard</code></h3>
+        <p><span class="tag field">Field: own data</span><span class="tag corp">Corporate: team/user filter</span><span class="tag acl">admin.dashboard</span></p>
+        <p>The shell loads first; Overview, People, Attendance and Live sections are fetched independently by AJAX so a slow section does not block the others.</p>
+        <table>
+          <tr><th>Section</th><th>Explanation and logic</th></tr>
+          <tr><td>Overview</td><td>Outbound calls, inbound calls, comments and message replies; solved issues separately; previous equal-length period comparison; report submission figures; daily trend; project/platform breakdowns. Corporate users see targets and achievement; field users do not.</td></tr>
+          <tr><td>People</td><td>Server-paged field-user rows with report totals and KPI score. Search up to 100 characters; sort by name, reports, activity totals, total, achievement or score. Export requests all matching rows.</td></tr>
+          <tr><td>Attendance</td><td>Team totals, daily presence and missing-report insights. A report is the attendance “present” signal; approved full leave is leave, not absent.</td></tr>
+          <tr><td>Live</td><td>Corporate only. Current-day team state; field users receive no live payload.</td></tr>
+        </table>
+        <p>Date presets are Today, current Saturday-based Week, last 15 days, current Month-to-date, or Custom. Corporate viewers can filter to one field user; a field viewer's supplied <code>user_id</code> is ignored and replaced with their own ID.</p>
+      </article>
+
+      <article id="attendance">
+        <h3>5.2 Attendance — <code>/attendance</code> and header check-in</h3>
+        <p><span class="tag field">Field: own attendance</span><span class="tag corp">Corporate: all users</span><span class="tag acl">attendance.index</span></p>
+        <h4>Attendance sheet</h4>
+        <p>Shows one mark per user/day: <strong>P</strong> present (report exists), <strong>A</strong> absent, <strong>L</strong> approved full leave, <strong>O</strong> Friday off, <strong>H</strong> holiday, <strong>F</strong> future, and <strong>N</strong> before the user was created. The page supports the common presets/custom range, user filter for corporate viewers, server paging (5–100 rows) and full CSV-style JSON export.</p>
+        <h4>Check-in log</h4>
+        <p>Groups multiple sessions into one user/day row: first check-in, final checkout, sum of completed-session minutes, session count, status and last adjustment note. Status priority is open → incomplete → adjusted → completed. Managers additionally receive coordinates and editable timestamps; field users do not receive locations.</p>
+        <h4>Check-in/check-out conditions</h4>
+        <ul>
+          <li>Only field users; calls are throttled to 10 per minute.</li>
+          <li>Location is optional. Latitude must be −90..90, longitude −180..180 and accuracy non-negative. A partial coordinate pair is discarded.</li>
+          <li>Only one open session per user is allowed. Stale prior-day sessions auto-close without a known checkout time.</li>
+          <li>At 7:00 PM attendance timezone, open users receive a database notification. Checkout or acknowledgement marks it read.</li>
+          <li>A corporate manager may adjust the session ending the day. Checkout is required, cannot precede check-in or be future; optional check-in must remain on the original work date. A reason is required and the change is activity-logged.</li>
+        </ul>
+      </article>
+
+      <article id="reports">
+        <h3>5.3 Daily reports</h3>
+        <h4>Day End — <code>/daily-reports/create</code></h4>
+        <p><span class="tag field">Primary field workflow</span><span class="tag acl">daily-reports.create/store</span></p>
+        <p>The report date is read-only and selected by the attendance service. If a report already exists for that user/date, the form is prefilled and saving updates it instead of creating a duplicate.</p>
+        <table>
+          <tr><th>Input group</th><th>Rules</th></tr>
+          <tr><td>Main counts</td><td>Outbound calls, inbound calls and order processing are required non-negative integers. Solved issues is optional/non-negative. Each has an optional note up to 5,000 characters.</td></tr>
+          <tr><td>Platform/project rows</td><td>Only active entities are offered (previously saved inactive entities remain visible while editing). IDs must be distinct and valid. Outbound-call, comment and message-reply inputs appear only if the entity's switch is on.</td></tr>
+          <tr><td>Save behavior</td><td>One record per user/date, saved in a transaction with child rows. A switched-off activity cannot be overwritten. Submitted row counts default to zero where enabled. Existing child rows omitted from a subsequent submission are not deleted.</td></tr>
+          <tr><td>Leave conflict</td><td>No report on an approved full-day leave. Half-day leave is allowed.</td></tr>
+        </table>
+        <h4>Report History — <code>/daily-reports</code></h4>
+        <p>Field users normally see only their reports. Corporate users are automatically given the team listing. Filter by from/to date; default order is newest date then newest record. Totals include project/platform comment and message breakdowns. Owners may delete; owners and corporate users may edit. The show action permits owner, corporate sector or explicit Team Reports permission.</p>
+        <h4>Team Reports — <code>/daily-reports/team</code></h4>
+        <p>Same listing, with a field-user selector. ACL access to this route is what exposes the team menu item; it should be assigned only to appropriate roles.</p>
+      </article>
+
+      <article id="targets">
+        <h3>5.4 Daily and monthly targets</h3>
+        <h4>Daily Targets — <code>/daily-targets</code></h4>
+        <p><span class="tag corp">Management</span><span class="tag acl">daily-targets.*</span></p>
+        <ul>
+          <li>List one target per field user/day, filter by user and date, and view platform/project breakdowns and setter.</li>
+          <li>Create/edit applies one definition to one or more field users across working days. Fridays and holidays are skipped; an empty working-day range is rejected.</li>
+          <li>Outbound target is required and ≥1. Other main/entity targets are optional non-negative integers. Only active project/platform IDs are accepted.</li>
+          <li>Existing target for user/date is replaced as a whole, including its child activity rows. Empty optional activities become “no target.”</li>
+          <li>CSV export uses the visible filters. It queues a job, returns a user-owned token, supports status polling, then serves the completed file once and deletes it.</li>
+        </ul>
+        <h4>Monthly Targets — <code>/period-targets</code></h4>
+        <p>One monthly target per field user/activity, used only when <code>KPI_TARGET_MODE=period</code>. Select month and users, enter required outbound target and optional activity targets. Saving replaces each selected user's entire month. Blank/zero activities are omitted. Deleting removes all of one user's targets for that month.</p>
+        <div class="callout"><strong>Mode choice:</strong> <code>daily</code> compares each day's report to that day's target. <code>period</code> prorates a monthly target by eligible working days in the requested range, excluding pre-join days and approved leave; the UI still contains both target-management pages, but KPI reads the configured mode.</div>
+      </article>
+
+      <article id="kpi">
+        <h3>5.5 KPI — <code>/kpi</code></h3>
+        <p><span class="tag field">Own score, targets hidden</span><span class="tag corp">Team scores and export</span><span class="tag acl">kpi.*</span></p>
+        <ul>
+          <li>Uses the same presets/custom range and 366-day limit. Corporate users can filter a field user; field users are forced to themselves.</li>
+          <li>Daily detail labels each working day as worked/absent/leave/off/not joined. Attendance check-in figures are informational and do not change score.</li>
+          <li>Report outbound calls and order processing are added together and compared with the outbound target.</li>
+          <li>Every activity with a positive target gets a score share. Outbound receives the configured 70% when other target activities exist, otherwise 100%. Other target activities split the remainder equally. If outbound has no target, other activities split 100%.</li>
+          <li>Each activity achievement is capped at 100%; total score is capped at 100. The default totals weight only outbound at 1 and give other metrics weight 0, although those activities can still have their own score lines.</li>
+          <li>Half-day approved leave halves a daily goal using ceiling rounding. Full leave is excluded. A missing report on a working day is absent.</li>
+          <li>Corporate Excel export is queued, token-owned, single-download and automatically purged if abandoned. It contains one sheet per user.</li>
+          <li><code>/kpi/monthly</code> returns frozen snapshots. Default is the prior month; corporate sees all, field sees self. Snapshots prevent later edits from rewriting historical closed-month scores.</li>
+        </ul>
+      </article>
+
+      <article id="leave">
+        <h3>5.6 Leave pages</h3>
+        <h4>My Leaves — <code>/my-leaves</code></h4>
+        <p>Lists the signed-in user's daily leave rows, newest first, including decision status and approver. Only field-sector users can apply. Valid types are Casual, Sick, Annual and Other; duration is Full Day or Half Day.</p>
+        <ul>
+          <li>Range must contain at least one working day and may span at most 31 days.</li>
+          <li>Existing approved leave cannot be overwritten by another request.</li>
+          <li>Full-day request conflicts with an existing report; half day does not.</li>
+          <li>Each working day becomes a pending row. Only pending rows can be withdrawn, and only by their owner.</li>
+        </ul>
+        <h4>Leave Administration — <code>/leaves</code></h4>
+        <p>Lists all field-user leave rows with user/date/status filters. Admin-created leave is approved immediately and may be bulk-applied over users/working days (up to 366-day span). Existing user/date leave is replaced. Editing remains a single day and cannot move onto Friday/holiday or duplicate another leave.</p>
+        <p>Approving a pending full day rechecks report conflicts. Approve/reject records the deciding user. Editing an already approved leave updates its approver to the current administrator; pending/rejected decisions remain unchanged. Deletion removes the record; daily targets are deliberately retained so they count again if leave is removed.</p>
+      </article>
+
+      <article id="masters">
+        <h3>5.7 Master-data pages</h3>
+        <h4>Projects — <code>/projects</code> and Social Platforms — <code>/social-platforms</code></h4>
+        <p>Both pages are AJAX CRUD lists with the same behavior: unique name (max 255), optional notes (max 5,000), active flag, and switches for outbound calls, comments and message replies. Unchecked switches normalize to false. Slugs regenerate from changed names and receive numeric suffixes if needed.</p>
+        <p>An entity referenced by report or target data cannot be deleted (HTTP 409); deactivate it instead. Active entities appear on new reports/targets. An inactive entity remains accepted on a report that already contains it so historical data can be edited.</p>
+        <h4>Holidays — <code>/holidays</code></h4>
+        <p>AJAX list/create/edit/delete. Date must be unique; title is required, max 255. Import accepts XLSX/XLS/CSV up to 5 MB, expects Date and Title headings, reports row failures, and updates/creates valid holidays. Sample XLSX or CSV is downloadable. Saving a holiday removes daily targets on that date.</p>
+      </article>
+
+      <article id="admin">
+        <h3>5.8 Administration pages</h3>
+        <h4>Users — <code>/admin/users</code></h4>
+        <p>Lists users and roles, with role filtering. Create/edit requires name, unique email, employee ID, at least one role, sector (field/corporate), active boolean and optional image under roughly 1 MB. New password requires 8+ characters with uppercase, lowercase, digit and one of <code>@ # $</code>; edit password is optional with the same complexity.</p>
+        <p>Import accepts XLSX/XLS/CSV up to 5 MB with User Name, Email, Employee ID, Usages Sector and Role. Email/employee ID must be unique both in the database and file; role must exist. Valid rows get default password <code>remarkhb</code> and one role. Any row failures produce a failure response while valid rows may already have been imported; the operation is audit-logged.</p>
+        <p>Only a hard-coded super-admin role can delete a user, and self-deletion is blocked. The profile image file is removed before the user record. The <code>is_active</code> field is stored/displayed, but this codebase does not add it as a Fortify login condition.</p>
+        <h4>Roles — <code>/admin/roles</code></h4>
+        <p>Create/edit a slugged unique role name (max 30) with at least one ACL resource. Resources for Role/Resource controllers are excluded. Updating replaces permissions. Only super admin may delete; role ID 1 is excluded from normal lists/forms.</p>
+        <h4>Permission Labels — <code>/view-permissions</code></h4>
+        <p>Lists generated ACL resources grouped/sorted by controller and allows their human-readable labels to be updated. The update endpoint does not declare field validation in the controller.</p>
+        <h4>Activity Log — <code>/admin/activity-log</code></h4>
+        <p>Paginated 15 rows with total/today/auth/data/workflow summaries. Filters: free text, event, log name, subject type, causer and date range. Search scans description, event, log name, subject/causer type and JSON properties.</p>
+        <h4>Site and Theme Settings — <code>/site-settings</code></h4>
+        <p>Stores one effective site-settings record: title/meta text, custom header/footer code, contact details, site information, favicon/logos/banner and layout theme. Images are validated by type/size and old files are deleted on replacement. Phone accepts Bangladeshi mobile formats. Theme values are restricted to defined styles and RGB triplets. The menu link is currently commented out, so access is normally by route/permission or theme switcher.</p>
+      </article>
+
+      <article id="account">
+        <h3>5.9 Authentication, profile and team pages</h3>
+        <table>
+          <tr><th>Page</th><th>Workflow</th></tr>
+          <tr><td>Login / two-factor challenge</td><td>Email/password login, optional confirmed 2FA challenge and recovery code; rate limited.</td></tr>
+          <tr><td>Register</td><td>Name, unique email and standard Jetstream password confirmation; creates a personal team. Note that admin-specific employee ID, sector and ACL role are not requested by the public registration action.</td></tr>
+          <tr><td>Forgot/reset password</td><td>Standard Fortify reset link and reset flow.</td></tr>
+          <tr><td>Profile</td><td>Update name/unique email and JPG/JPEG/PNG photo ≤1 MB; update password; enable/confirm/disable 2FA; review/logout browser sessions; delete account after confirmation.</td></tr>
+          <tr><td>Teams</td><td>Create team, switch current team, rename (owner), invite by email, add/remove members, manage member role if Jetstream roles are configured, leave non-owned team, delete owned team. Duplicate membership/invitations are rejected.</td></tr>
+        </table>
+      </article>
+    </section>
+
+    <section id="data">
+      <h2>6. Data model and important relationships</h2>
+      <table>
+        <tr><th>Entity</th><th>Relationships / integrity</th></tr>
+        <tr><td>User</td><td>Many ACL roles, reports, attendance sessions, daily/monthly targets, leave rows, teams and notifications. Employee ID is database-unique when present.</td></tr>
+        <tr><td>DailyReport</td><td>Belongs to user; unique user/date; owns platform/project activity rows. Deleting cascades to children.</td></tr>
+        <tr><td>DailyTarget</td><td>Belongs to user and optional setter; unique user/date; owns platform/project target rows.</td></tr>
+        <tr><td>Project / SocialPlatform</td><td>Referenced by report and target children with restricted deletion, reinforced by controller conflict checks.</td></tr>
+        <tr><td>Holiday</td><td>Unique date; changes the shared working-day calendar.</td></tr>
+        <tr><td>UserLeave</td><td>Unique user/date; belongs to user and optional approver; status pending/approved/rejected.</td></tr>
+        <tr><td>AttendanceSession</td><td>Many per user/day, but database open-flag design prevents more than one open session per user. Stores times, optional geo/IP/device and adjustment audit fields.</td></tr>
+        <tr><td>PeriodTarget</td><td>Unique user/month/activity; activity key may be main or <code>platform:{id}:{metric}</code>/<code>project:{id}:{metric}</code>.</td></tr>
+        <tr><td>KpiSnapshot</td><td>Unique user/month, generated after month end to freeze figures.</td></tr>
+      </table>
+      <div class="callout good"><strong>Transactional operations:</strong> reports with child rows, target bulk upserts, leave bulk upserts, attendance check-in/out locking, monthly targets and user registration are wrapped in database transactions where consistency is most important.</div>
+    </section>
+
+    <section id="automation">
+      <h2>7. Scheduled and background automation</h2>
+      <table>
+        <tr><th>Schedule</th><th>Command/job</th><th>Effect</th></tr>
+        <tr><td>Every 15 minutes</td><td><code>attendance:auto-close</code></td><td>Marks prior-day open sessions as automatically closed/incomplete; no known checkout is invented at this stage.</td></tr>
+        <tr><td>Daily 7:00 PM attendance timezone</td><td><code>attendance:remind</code></td><td>Database-notifies users still checked in.</td></tr>
+        <tr><td>Monthly, day 1 at 12:30 AM</td><td><code>kpi:snapshot</code></td><td>Freezes the just-ended month's KPI for every field user; an active month cannot be frozen.</td></tr>
+        <tr><td>Hourly</td><td><code>kpi:purge-exports</code></td><td>Deletes expired KPI and daily-target export files that were never downloaded.</td></tr>
+        <tr><td>Daily midnight</td><td><code>kv:expire-assignments</code></td><td>Package/domain command registered by the application; KV assignment details are outside the project-owned models reviewed here.</td></tr>
+        <tr><td>On export request</td><td>Generate KPI/target export jobs</td><td>Cache status transitions pending → processing/done/failed; a queue worker is started when the queue is asynchronous.</td></tr>
+      </table>
+      <p>The Laravel scheduler and queue worker must be running in production for reminders, cleanup, snapshots and asynchronous exports to work reliably.</p>
+    </section>
+
+    <section id="routes">
+      <h2>8. Application route reference</h2>
+      <p class="small">All business routes below are web routes. CRUD shorthand lists the controller-supported operations, not merely visual menu links.</p>
+      <table>
+        <tr><th>Area</th><th>Routes / actions</th></tr>
+        <tr><td>Entry</td><td><code>GET /</code>, <code>GET /dashboard</code></td></tr>
+        <tr><td>Attendance header</td><td><code>GET /attendance/status</code>; <code>POST /attendance/check-in</code>, <code>/check-out</code>, <code>/acknowledge</code></td></tr>
+        <tr><td>Attendance page</td><td><code>GET /attendance</code>; <code>POST /attendance/sessions/{session}/adjust</code></td></tr>
+        <tr><td>Reports</td><td>Resource CRUD at <code>/daily-reports</code>; team listing at <code>/daily-reports/team</code></td></tr>
+        <tr><td>Daily targets</td><td>Index/create/store/edit/delete at <code>/daily-targets</code>; export at <code>/daily-targets/export</code></td></tr>
+        <tr><td>Monthly targets</td><td><code>GET/POST /period-targets</code>; <code>DELETE /period-targets/{user}</code> with month query</td></tr>
+        <tr><td>KPI</td><td><code>GET /kpi</code>, <code>/kpi/{user}</code>, <code>/kpi/monthly</code>, <code>/kpi/export</code></td></tr>
+        <tr><td>Leave</td><td>Admin CRUD/approve/reject at <code>/leaves</code>; employee index/store/delete at <code>/my-leaves</code></td></tr>
+        <tr><td>Masters</td><td>Resource CRUD at <code>/projects</code>, <code>/social-platforms</code>; holiday list/store/edit/update/delete/import/sample at <code>/holidays</code></td></tr>
+        <tr><td>Admin</td><td>Resource CRUD at <code>/admin/users</code> and <code>/admin/roles</code>; user import; activity log; permission list/label update; resource CRUD at <code>/site-settings</code> plus theme save</td></tr>
+        <tr><td>Framework account</td><td>Fortify login/register/password/2FA routes; Jetstream profile, sessions, account deletion, team creation/switching/members/invitations routes</td></tr>
+        <tr><td>API</td><td><code>GET /api/user</code> requires Sanctum and returns the authenticated user. Jetstream API-token feature is disabled.</td></tr>
+        <tr><td>Utility/package</td><td><code>GET /up</code> health check; package upload/log-viewer/helper routes may be registered by installed providers. <code>GET /optimize-clear</code> is publicly registered in project routes.</td></tr>
+      </table>
+    </section>
+
+    <section id="observations">
+      <h2>9. Implementation notes and operational cautions</h2>
+      <p>These are documented behaviors observed in the current source, useful for administrators and future developers.</p>
+      <ul>
+        <li><strong>Public registration vs employee data:</strong> registration is enabled but does not set employee ID, sector or ACL roles. Such a user may authenticate but will not automatically fit normal field/corporate authorization workflows.</li>
+        <li><strong>Active user status:</strong> <code>is_active</code> is managed in the Users page, but the Fortify provider shown in this project does not reject inactive users during authentication.</li>
+        <li><strong>Email verification:</strong> the protected group uses <code>verified</code>, while the User model does not implement <code>MustVerifyEmail</code> and Fortify email verification is disabled. This effectively relies on Laravel's behavior for non-verifying users.</li>
+        <li><strong>Password-expiry middleware:</strong> a 30-day password middleware exists but is not attached in the reviewed route group, and it references a named reset route not declared in project routes. Treat it as dormant unless enabled elsewhere.</li>
+        <li><strong>Import atomicity:</strong> user import validates rows and imports valid rows in a transaction, but returns an overall 422 when any row failed. Administrators should check <code>imported_count</code> before re-uploading to avoid confusion.</li>
+        <li><strong>Public utility route:</strong> <code>/optimize-clear</code> has no authentication middleware in <code>routes/web.php</code>. Restrict it at deployment or move it behind authorization if it should not be public.</li>
+        <li><strong>Menu vs route:</strong> site settings, permissions and activity log may not all appear in the sidebar. ACL-authorized routes still exist and can be opened directly.</li>
+        <li><strong>Labels in legacy schema:</strong> child column <code>inbound_calls</code> is displayed as outbound calls in project/platform forms due to a historical schema rename. Documentation follows the UI/business wording where relevant.</li>
+      </ul>
+      <div class="callout"><strong>Source of truth:</strong> this document describes the repository as reviewed on the date above. Environment values such as <code>KPI_TARGET_MODE</code>, queue driver, application timezone, mail and filesystem configuration can change runtime behavior.</div>
+      <p class="small">Key implementation paths: <span class="path">routes/web.php</span>, <span class="path">app/Http/Controllers</span>, <span class="path">app/Http/Requests</span>, <span class="path">app/Services</span>, <span class="path">app/Models</span>, <span class="path">resources/views/backend</span>, <span class="path">database/migrations</span>, <span class="path">routes/console.php</span>.</p>
+    </section>
+  </main>
+</div>
+</body>
+</html>
